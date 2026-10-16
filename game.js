@@ -79,11 +79,11 @@ const makeSkin = (key) => {
 //   hop / reach: farthest quick hop, and farthest pounce after a full wiggle
 //   hopRadius / wiggleRadius: catch circle of a quick hop, and after a full wiggle
 //   leapBase + distance / leapSpeed: how many seconds a leap takes (smaller base, bigger speed = faster)
-const BASE_CAT = { hop: 90, reach: 175, hopRadius: 20, wiggleRadius: 44, leapBase: .2, leapSpeed: 800 };
+const BASE_CAT = { hop: 90, reach: 175, hopRadius: 17, wiggleRadius: 38, leapBase: .2, leapSpeed: 800 };
 const UPGRADES = [   // "per" is what one level adds
   { id: "reach", name: "Reach", blurb: "Hops and pounces go farther.", per: { hop: 7, reach: 13 } },
   { id: "speed", name: "Speed", blurb: "Leaps get there faster.", per: { leapBase: -.012, leapSpeed: 80 } },
-  { id: "width", name: "Width", blurb: "A bigger catch circle.", per: { hopRadius: 1, wiggleRadius: 2 } },
+  { id: "width", name: "Width", blurb: "A bigger catch circle.", per: { hopRadius: 1.6, wiggleRadius: 3.2 } },   // max rank: 25 → 54, same as before
 ];
 const UPGRADE_COSTS = [500, 1500, 3000, 7500, 15000];   // points for rank 1, 2, 3, 4, 5 (82,500 to max all three)
 let CAT = { ...BASE_CAT }, SKIN = makeSkin("barnOrange");   // the cat's numbers (with upgrades) and its look
