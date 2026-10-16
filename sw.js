@@ -3,7 +3,7 @@
 // When there IS internet, it always fetches the newest files first, so updates show up right away.
 // If you add a new file the game needs, add it to FILES below and raise VERSION by 1.
 
-const VERSION = 2;
+const VERSION = 4;
 const CACHE = "barncat-v" + VERSION;
 const FILES = [
   "./",
@@ -12,9 +12,9 @@ const FILES = [
   "game.js",
   "install.js",
   "manifest.webmanifest",
-  "fonts/lilita-one-400.woff2",
-  "fonts/atkinson-hyperlegible-400.woff2",
-  "fonts/atkinson-hyperlegible-700.woff2",
+  "fonts/LilitaOne-Regular.ttf",
+  "fonts/AtkinsonHyperlegible-Regular.ttf",
+  "fonts/AtkinsonHyperlegible-Bold.ttf",
   "icons/icon-192.png",
   "icons/icon-512.png",
   "icons/icon-maskable-512.png",
@@ -23,6 +23,8 @@ const FILES = [
   "licenses/NOTICE.txt",
   "licenses/capacitor-MIT.txt",
   "licenses/apache-2.0.txt",
+  "licenses/chromium-BSD.txt",
+  "licenses/threetenbp-BSD.txt",
   "licenses/font-lilita-one-OFL.txt",
   "licenses/font-atkinson-hyperlegible-OFL.txt",
 ];

@@ -9,3 +9,5 @@ A small phone game: you're a barn cat protecting the grain from mice, rats and b
 - **iPhone:** open the link in Safari, tap **Share**, then **Add to Home Screen**.
 
 All art and sounds are made in code. Fonts: Lilita One and Atkinson Hyperlegible, used under the SIL Open Font License (see `fonts/`).
+
+© 2026 Trey120234. All rights reserved. The game's code, art and sounds may not be copied or reused without permission. The open-source parts keep their own licenses (see the Credits screen and `licenses/`).

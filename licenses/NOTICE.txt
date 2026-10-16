@@ -1,5 +1,7 @@
 Barn Cat: Midnight Prowler - open-source software notices
 
+Barn Cat: Midnight Prowler © 2026 Trey120234. All rights reserved.
+
 The game's code, art and sounds are original and made for Barn Cat.
 The Android app also includes the following open-source software:
 
@@ -15,7 +17,30 @@ Apache Cordova Android framework
 
 AndroidX libraries (appcompat, core, core-splashscreen, activity, fragment,
 coordinatorlayout, webkit and the libraries they depend on)
-  Copyright The Android Open Source Project, and Kotlin by JetBrains s.r.o.
+  Copyright The Android Open Source Project
+  Apache License 2.0 - see apache-2.0.txt
+
+Chromium WebView support library interfaces (part of AndroidX WebKit)
+  Copyright 2018 The Chromium Authors. All rights reserved.
+  BSD 3-Clause License - see chromium-BSD.txt
+
+Kotlin standard library
+  Kotlin Compiler
+  Copyright 2010-2024 JetBrains s.r.o and respective authors and developers
+  Apache License 2.0 - see apache-2.0.txt
+  Parts of its time code (kotlin.time) are derived from ThreeTen Backport:
+  Copyright (c) 2007-present, Stephen Colebourne & Michael Nascimento Santos.
+  All rights reserved.
+  BSD 3-Clause License - see threetenbp-BSD.txt
+
+kotlinx.coroutines
+  kotlinx.coroutines library.
+  Copyright 2016-2025 JetBrains s.r.o and contributors
+  Apache License 2.0 - see apache-2.0.txt
+
+Small helper libraries: JetBrains Annotations (Copyright JetBrains s.r.o.),
+JSpecify (Copyright The JSpecify Authors), Guava ListenableFuture
+(Copyright The Guava Authors)
   Apache License 2.0 - see apache-2.0.txt
 
 Fonts

@@ -1,10 +1,10 @@
 /* Barn Cat: Midnight Prowler - all the styles for the page around the game board. */
 /* Layout: one full-screen night barn; a slim HUD strip on top, the game board fills the rest. */
 
-/* Fonts are stored in the "fonts" folder (free Google Fonts, licenses in fonts/OFL-*.txt), so no internet is needed. */
-@font-face { font-family: "Lilita One"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/lilita-one-400.woff2") format("woff2"); }
-@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/atkinson-hyperlegible-400.woff2") format("woff2"); }
-@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 700; font-display: swap; src: url("fonts/atkinson-hyperlegible-700.woff2") format("woff2"); }
+/* Fonts are stored in the "fonts" folder (the full, unchanged official files from Google Fonts, licenses in fonts/OFL-*.txt), so no internet is needed. */
+@font-face { font-family: "Lilita One"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/LilitaOne-Regular.ttf") format("truetype"); }
+@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/AtkinsonHyperlegible-Regular.ttf") format("truetype"); }
+@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 700; font-display: swap; src: url("fonts/AtkinsonHyperlegible-Bold.ttf") format("truetype"); }
 
 :root {
   --night: #15111c;      /* sky outside the barn */
@@ -167,6 +167,7 @@ canvas { display: block; touch-action: none; border-radius: 6px; }
 .credits-card { max-height: 100%; gap: 12px; text-align: left; }
 .credits-card h2, .credits-card .eyebrow { text-align: center; }
 .credits-card p { font-size: 14px; }
+.credits-card .copyright { text-align: center; font-size: 13px; color: var(--muted); }
 .credits-list { display: grid; gap: 6px; overflow-y: auto; min-height: 0; }
 .credits-list details { background: #1b1520; border: 1px solid #3a2f3e; border-radius: 12px; }
 .credits-list summary { cursor: pointer; padding: 10px 12px; list-style-position: inside; }

@@ -15,15 +15,15 @@
   <meta name="apple-mobile-web-app-title" content="Barn Cat">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <!-- the fonts live in the "fonts" folder, so the game works without internet -->
-  <link rel="preload" href="fonts/lilita-one-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/LilitaOne-Regular.ttf" as="font" type="font/ttf" crossorigin>
   <style>
 /* Barn Cat: Midnight Prowler - all the styles for the page around the game board. */
 /* Layout: one full-screen night barn; a slim HUD strip on top, the game board fills the rest. */
 
-/* Fonts are stored in the "fonts" folder (free Google Fonts, licenses in fonts/OFL-*.txt), so no internet is needed. */
-@font-face { font-family: "Lilita One"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/lilita-one-400.woff2") format("woff2"); }
-@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/atkinson-hyperlegible-400.woff2") format("woff2"); }
-@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 700; font-display: swap; src: url("fonts/atkinson-hyperlegible-700.woff2") format("woff2"); }
+/* Fonts are stored in the "fonts" folder (the full, unchanged official files from Google Fonts, licenses in fonts/OFL-*.txt), so no internet is needed. */
+@font-face { font-family: "Lilita One"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/LilitaOne-Regular.ttf") format("truetype"); }
+@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/AtkinsonHyperlegible-Regular.ttf") format("truetype"); }
+@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 700; font-display: swap; src: url("fonts/AtkinsonHyperlegible-Bold.ttf") format("truetype"); }
 
 :root {
   --night: #15111c;      /* sky outside the barn */
@@ -186,6 +186,7 @@ canvas { display: block; touch-action: none; border-radius: 6px; }
 .credits-card { max-height: 100%; gap: 12px; text-align: left; }
 .credits-card h2, .credits-card .eyebrow { text-align: center; }
 .credits-card p { font-size: 14px; }
+.credits-card .copyright { text-align: center; font-size: 13px; color: var(--muted); }
 .credits-list { display: grid; gap: 6px; overflow-y: auto; min-height: 0; }
 .credits-list details { background: #1b1520; border: 1px solid #3a2f3e; border-radius: 12px; }
 .credits-list summary { cursor: pointer; padding: 10px 12px; list-style-position: inside; }
@@ -199,7 +200,6 @@ canvas { display: block; touch-action: none; border-radius: 6px; }
 .update-bar { height: 12px; }
 .update-bar i { width: 0; background: var(--lantern); transition: width .15s linear; }
 .update-status { font-size: 14px !important; color: var(--muted) !important; min-height: 1.4em; }
-
   </style>
 </head>
 <body>
@@ -260,6 +260,7 @@ canvas { display: block; touch-action: none; border-radius: 6px; }
         <span class="eyebrow">Barn Cat: Midnight Prowler</span>
         <h2>Credits</h2>
         <p>The game's code, art and sounds are original and made for Barn Cat. Everything you see and hear is created in code.</p>
+        <p class="copyright">© 2026 Trey120234. All rights reserved.</p>
         <div class="section-label">Open-source software</div>
         <div class="credits-list">
           <details>
@@ -273,6 +274,18 @@ canvas { display: block; touch-action: none; border-radius: 6px; }
           <details>
             <summary><b>AndroidX libraries</b><small>© The Android Open Source Project · Apache License 2.0</small></summary>
             <pre data-src="licenses/apache-2.0.txt"></pre>
+          </details>
+          <details>
+            <summary><b>Chromium WebView interfaces</b><small>© 2018 The Chromium Authors · BSD 3-Clause License</small></summary>
+            <pre data-src="licenses/chromium-BSD.txt"></pre>
+          </details>
+          <details>
+            <summary><b>Kotlin and kotlinx.coroutines</b><small>© JetBrains s.r.o. and contributors · Apache License 2.0</small></summary>
+            <pre data-src="licenses/apache-2.0.txt"></pre>
+          </details>
+          <details>
+            <summary><b>Kotlin time code (from ThreeTen Backport)</b><small>© 2007-present Stephen Colebourne &amp; Michael Nascimento Santos · BSD 3-Clause License</small></summary>
+            <pre data-src="licenses/threetenbp-BSD.txt"></pre>
           </details>
           <details>
             <summary><b>Lilita One font</b><small>© 2011 Juan Montoreano · SIL Open Font License</small></summary>
@@ -1512,7 +1525,6 @@ reset();
 for (let i = 0; i < 3; i++) spawnCritter();
 requestAnimationFrame(frame);
 })();
-
 </script>
 </body>
 </html>
