@@ -1,3 +1,17 @@
 # Private notes: these stay on Trey's computer and are never uploaded to GitHub.
 CLAUDE.md
 docs/
+
+# The app's signing key and passwords: NEVER upload. Back this folder up somewhere safe.
+signing/
+
+# Made automatically; not uploaded.
+node_modules/
+www/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/.idea/
+*.apk
+*.aab

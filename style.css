@@ -1,4 +1,4 @@
-/* Barn Cat Night Shift - all the styles for the page around the game board. */
+/* Barn Cat: Midnight Prowler - all the styles for the page around the game board. */
 /* Layout: one full-screen night barn; a slim HUD strip on top, the game board fills the rest. */
 
 /* Fonts are stored in the "fonts" folder (free Google Fonts, licenses in fonts/OFL-*.txt), so no internet is needed. */
@@ -157,3 +157,6 @@ canvas { display: block; touch-action: none; border-radius: 6px; }
 .get-app ol { padding-left: 20px; display: grid; gap: 4px; }
 .get-app .get-app-help { color: var(--muted); }
 .get-app .share-icon { vertical-align: -3px; color: #6aa8ff; }
+.get-app .get-app-file { color: var(--lantern); font-weight: 700; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; padding: 6px 0; }
+.get-app .get-app-file:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; border-radius: 4px; }
+.card h1 .subtitle { display: block; font-size: 28px; margin-top: 2px; color: var(--cream); }

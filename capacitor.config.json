@@ -1,0 +1,8 @@
+{
+  "appId": "com.barncatgame.app",
+  "appName": "Barn Cat",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#15111c"
+  }
+}

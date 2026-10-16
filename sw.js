@@ -1,4 +1,4 @@
-// Barn Cat Night Shift - offline helper (a "service worker").
+// Barn Cat: Midnight Prowler - offline helper (a "service worker").
 // It keeps a copy of the game on the phone, so it still works without internet.
 // When there IS internet, it always fetches the newest files first, so updates show up right away.
 // If you add a new file the game needs, add it to FILES below and raise VERSION by 1.

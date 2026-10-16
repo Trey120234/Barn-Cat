@@ -1,0 +1,87 @@
+# =============================================================
+#  Builds the Barn Cat Android app (BarnCat.apk) on GitHub's computers
+#  every time a change is uploaded, signs it with the private key kept
+#  in this project's secret settings, and posts it on the Releases page.
+#  The website's "Download for Android" link always points to the newest one.
+#  Runs on GitHub, not on your PC.
+# =============================================================
+
+name: Build Android app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:      # or click "Run workflow" on the Actions tab
+
+permissions:
+  contents: write         # needed to post the app on the Releases page
+
+concurrency:
+  group: android
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the signing secrets are set up
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KSP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KA: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KS" ] || [ -z "$KSP" ] || [ -z "$KA" ] || [ -z "$KP" ]; then
+            echo "::error::The 4 Android signing secrets aren't set up yet (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Put the game files inside the Android project
+        run: |
+          npm ci
+          npm run copy-web
+          npx cap sync android
+
+      - name: Build and sign the app
+        env:
+          APP_VERSION_CODE: ${{ github.run_number }}
+          APP_VERSION_NAME: 1.0.${{ github.run_number }}
+          KEYSTORE_FILE: ${{ runner.temp }}/barncat-release.p12
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$KEYSTORE_FILE"
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../BarnCat.apk
+          rm -f "$KEYSTORE_FILE"
+
+      - name: Check the app is properly signed
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs BarnCat.apk
+
+      - name: Post the app on the Releases page
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-${{ github.run_number }}
+          name: Barn Cat for Android (build ${{ github.run_number }})
+          body: |
+            Barn Cat for Android, version 1.0.${{ github.run_number }}.
+            Download **BarnCat.apk** below on an Android phone, open it, and tap Install.
+          files: BarnCat.apk
+          make_latest: true

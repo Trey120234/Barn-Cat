@@ -1,0 +1,18 @@
+{
+  "name": "barn-cat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Barn Cat: Midnight Prowler - the phone game, plus the Capacitor setup that turns it into an Android (and later iPhone) app.",
+  "scripts": {
+    "copy-web": "node scripts/copy-web.mjs",
+    "sync": "node scripts/copy-web.mjs && npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "8.5.3"
+  }
+}

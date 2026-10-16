@@ -1,4 +1,4 @@
-// Barn Cat Night Shift - installing the game as an app on a phone.
+// Barn Cat: Midnight Prowler - installing the game as an app on a phone.
 //  - Turns on the offline helper (sw.js), so the game works without internet after the first visit.
 //  - Shows the "Get the app" box on the start screen: an Install button on Android, steps on iPhone.
 //  - Hides that box when the game is already running as an installed app (or inside a store app later).
@@ -12,8 +12,9 @@
     || navigator.standalone === true
     || !!window.Capacitor;   // the future Google Play / App Store versions
 
-  // offline helper (only works on a real website, not when opening the file directly)
-  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  // offline helper: only for the website (not when opening the file directly, and not inside the
+  // store apps, which already have the game stored inside them)
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http") && !window.Capacitor) {
     navigator.serviceWorker.register("sw.js").catch(() => { /* the game still works without it */ });
   }
 

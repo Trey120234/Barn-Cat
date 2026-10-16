@@ -1,4 +1,4 @@
-// Barn Cat Night Shift - the whole game: drawing, critters, pouncing, scoring.
+// Barn Cat: Midnight Prowler - the whole game: drawing, critters, pouncing, scoring.
 // Everything is drawn with code on one <canvas>, so there are no image files.
 (() => {
 // ---------- Settings ----------
