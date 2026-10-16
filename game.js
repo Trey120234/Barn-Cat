@@ -1122,6 +1122,16 @@ $("nextBtn").onclick = () => start(nightIndex + 1);
 $("toNightsBtn").onclick = showNights;
 $("pauseNightsBtn").onclick = showNights;
 $("nightsBackBtn").onclick = () => { $("nightsScreen").hidden = true; $("startScreen").hidden = false; $("startBtn").focus(); };
+// Credits screen: each license text is loaded from the "licenses" folder the first time it's opened
+$("creditsBtn").onclick = () => { $("startScreen").hidden = true; $("creditsScreen").hidden = false; $("creditsBackBtn").focus(); };
+$("creditsBackBtn").onclick = () => { $("creditsScreen").hidden = true; $("startScreen").hidden = false; $("creditsBtn").focus(); };
+document.querySelectorAll("#creditsScreen details").forEach((d) => d.addEventListener("toggle", () => {
+  const pre = d.querySelector("pre");
+  if (!d.open || pre.textContent) return;
+  pre.textContent = "Loading…";
+  fetch(pre.dataset.src).then((r) => r.text()).then((txt) => { pre.textContent = txt; })
+    .catch(() => { pre.textContent = "This license is in the file " + pre.dataset.src + " that comes with the game."; });
+}));
 function pause() {
   if (state !== "play") return;
   state = "paused"; aim = null; queued = null;

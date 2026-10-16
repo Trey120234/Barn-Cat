@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Barn Cat: Midnight Prowler - all-in-one copy (made from index.html + style.css + game.js). Edit those files, not this one. Fonts and the app install need the website version. -->
+<!-- Barn Cat: Midnight Prowler - all-in-one copy (made from index.html + style.css + game.js). Edit those files, not this one. Fonts, licenses and the app install need the website version. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -180,6 +180,20 @@ canvas { display: block; touch-action: none; border-radius: 6px; }
 .get-app .get-app-file:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; border-radius: 4px; }
 .card h1 .subtitle { display: block; font-size: 28px; margin-top: 2px; color: var(--cream); }
 
+/* Credits */
+.text-btn { background: none; border: 0; color: var(--muted); font: 700 14px var(--body); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 10px; min-height: 44px; align-self: center; }
+.text-btn:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; border-radius: 6px; }
+.credits-card { max-height: 100%; gap: 12px; text-align: left; }
+.credits-card h2, .credits-card .eyebrow { text-align: center; }
+.credits-card p { font-size: 14px; }
+.credits-list { display: grid; gap: 6px; overflow-y: auto; min-height: 0; }
+.credits-list details { background: #1b1520; border: 1px solid #3a2f3e; border-radius: 12px; }
+.credits-list summary { cursor: pointer; padding: 10px 12px; list-style-position: inside; }
+.credits-list summary:focus-visible { outline: 3px solid var(--lantern); outline-offset: 2px; border-radius: 12px; }
+.credits-list summary b { font-size: 15px; }
+.credits-list summary small { display: block; margin-left: 18px; font-size: 12px; color: var(--muted); }
+.credits-list pre { margin: 0; padding: 0 12px 12px; max-height: 240px; overflow: auto; white-space: pre-wrap; font: 11px/1.4 ui-monospace, Consolas, monospace; color: var(--cream); }
+
   </style>
 </head>
 <body>
@@ -230,6 +244,44 @@ canvas { display: block; touch-action: none; border-radius: 6px; }
             <li>Tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>
           </ol>
         </section>
+        <button class="text-btn" id="creditsBtn" type="button">Credits</button>
+      </div>
+    </div>
+
+    <!-- Credits: the game is original; the open-source parts and their licenses are listed here (the licenses ask for this) -->
+    <div class="overlay" id="creditsScreen" hidden>
+      <div class="card credits-card">
+        <span class="eyebrow">Barn Cat: Midnight Prowler</span>
+        <h2>Credits</h2>
+        <p>The game's code, art and sounds are original and made for Barn Cat. Everything you see and hear is created in code.</p>
+        <div class="section-label">Open-source software</div>
+        <div class="credits-list">
+          <details>
+            <summary><b>Capacitor</b><small>© 2017-present Drifty Co. · MIT License</small></summary>
+            <pre data-src="licenses/capacitor-MIT.txt"></pre>
+          </details>
+          <details>
+            <summary><b>Apache Cordova (Android)</b><small>© The Apache Software Foundation · Apache License 2.0</small></summary>
+            <pre data-src="licenses/apache-2.0.txt"></pre>
+          </details>
+          <details>
+            <summary><b>AndroidX libraries</b><small>© The Android Open Source Project · Apache License 2.0</small></summary>
+            <pre data-src="licenses/apache-2.0.txt"></pre>
+          </details>
+          <details>
+            <summary><b>Lilita One font</b><small>© 2011 Juan Montoreano · SIL Open Font License</small></summary>
+            <pre data-src="licenses/font-lilita-one-OFL.txt"></pre>
+          </details>
+          <details>
+            <summary><b>Atkinson Hyperlegible font</b><small>© 2020 Braille Institute of America · SIL Open Font License</small></summary>
+            <pre data-src="licenses/font-atkinson-hyperlegible-OFL.txt"></pre>
+          </details>
+          <details>
+            <summary><b>All notices</b><small>Full list of open-source notices</small></summary>
+            <pre data-src="licenses/NOTICE.txt"></pre>
+          </details>
+        </div>
+        <button class="big alt" id="creditsBackBtn" type="button">Back</button>
       </div>
     </div>
 
@@ -1399,6 +1451,16 @@ $("nextBtn").onclick = () => start(nightIndex + 1);
 $("toNightsBtn").onclick = showNights;
 $("pauseNightsBtn").onclick = showNights;
 $("nightsBackBtn").onclick = () => { $("nightsScreen").hidden = true; $("startScreen").hidden = false; $("startBtn").focus(); };
+// Credits screen: each license text is loaded from the "licenses" folder the first time it's opened
+$("creditsBtn").onclick = () => { $("startScreen").hidden = true; $("creditsScreen").hidden = false; $("creditsBackBtn").focus(); };
+$("creditsBackBtn").onclick = () => { $("creditsScreen").hidden = true; $("startScreen").hidden = false; $("creditsBtn").focus(); };
+document.querySelectorAll("#creditsScreen details").forEach((d) => d.addEventListener("toggle", () => {
+  const pre = d.querySelector("pre");
+  if (!d.open || pre.textContent) return;
+  pre.textContent = "Loading…";
+  fetch(pre.dataset.src).then((r) => r.text()).then((txt) => { pre.textContent = txt; })
+    .catch(() => { pre.textContent = "This license is in the file " + pre.dataset.src + " that comes with the game."; });
+}));
 function pause() {
   if (state !== "play") return;
   state = "paused"; aim = null; queued = null;

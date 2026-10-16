@@ -3,7 +3,7 @@
 // If you add a file the game needs, add it to FILES here too (and to sw.js).
 import { cpSync, rmSync, mkdirSync } from "node:fs";
 
-const FILES = ["index.html", "style.css", "game.js", "install.js", "manifest.webmanifest", "sw.js", "fonts", "icons"];
+const FILES = ["index.html", "style.css", "game.js", "install.js", "manifest.webmanifest", "sw.js", "fonts", "icons", "licenses"];
 
 rmSync("www", { recursive: true, force: true });
 mkdirSync("www");

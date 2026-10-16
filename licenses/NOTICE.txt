@@ -1,0 +1,24 @@
+Barn Cat: Midnight Prowler - open-source software notices
+
+The game's code, art and sounds are original and made for Barn Cat.
+The Android app also includes the following open-source software:
+
+Capacitor (Android runtime)
+  Copyright (c) 2017-present Drifty Co.
+  MIT License - see capacitor-MIT.txt
+
+Apache Cordova Android framework
+  Copyright The Apache Software Foundation
+  This product includes software developed at
+  The Apache Software Foundation (https://www.apache.org/).
+  Apache License 2.0 - see apache-2.0.txt
+
+AndroidX libraries (appcompat, core, core-splashscreen, activity, fragment,
+coordinatorlayout, webkit and the libraries they depend on)
+  Copyright The Android Open Source Project, and Kotlin by JetBrains s.r.o.
+  Apache License 2.0 - see apache-2.0.txt
+
+Fonts
+  Lilita One - Copyright (c) 2011 Juan Montoreano, with Reserved Font Name "Lilita"
+  Atkinson Hyperlegible - Copyright 2020 Braille Institute of America, Inc.
+  SIL Open Font License 1.1 - see font-lilita-one-OFL.txt and font-atkinson-hyperlegible-OFL.txt
