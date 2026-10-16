@@ -60,7 +60,7 @@ jobs:
       - name: Build and sign the app
         env:
           APP_VERSION_CODE: ${{ github.run_number }}
-          APP_VERSION_NAME: 1.0.${{ github.run_number }}
+          APP_VERSION_NAME: 0.0.${{ github.run_number }}   # test builds; 1.0.0 is saved for the first published version
           KEYSTORE_FILE: ${{ runner.temp }}/barncat-release.p12
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -84,7 +84,7 @@ jobs:
           tag_name: android-${{ github.run_number }}
           name: Barn Cat for Android (build ${{ github.run_number }})
           body: |
-            Barn Cat for Android, version 1.0.${{ github.run_number }}.
+            Barn Cat for Android, test version 0.0.${{ github.run_number }}.
             Download **BarnCat.apk** below on an Android phone, open it, and tap Install.
           files: BarnCat.apk
           make_latest: true
