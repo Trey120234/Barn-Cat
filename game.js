@@ -1,0 +1,1156 @@
+// Barn Cat Night Shift - the whole game: drawing, critters, pouncing, scoring.
+// Everything is drawn with code on one <canvas>, so there are no image files.
+(() => {
+// ---------- Settings ----------
+const W = 360, H = 600, WALL = 16;
+// Butt Wiggle: a quick tap is a short hop; holding winds up a bigger pounce.
+// (How far, fast and wide the cat pounces is in BASE_CAT and UPGRADES below.)
+const TAP_TIME = .18;          // presses shorter than this (seconds) count as a tap
+const WIGGLE_FULL = 1.2;       // seconds of holding to reach a full wiggle
+const WIGGLE_MAX = 2.2;        // hold this long and the cat can't wait any more: it pounces by itself
+const NOTICE_RANGE = 125;      // mice this close notice the wiggle
+const NOTICE_ASK = .5, NOTICE_ALARM = 1, NOTICE_BOLT = 1.2;   // seconds until "?", "!!" and bolting
+const HIDE_TIME = [3, 5];      // a mouse that bolts home hides this many seconds, then comes back out
+const GETS_BOLDER = 1.6;       // each time a mouse bolts, it takes this much longer to scare next time
+// Mice are quick but nibble slowly; rats are slow but eat fast.
+const TYPES = {
+  mouse: { speed: 78, r: 7, eat: 3.5, points: 10, color: "#a3a2ad", ear: "#e8a3b0" },
+  rat:   { speed: 42, r: 11, eat: 15, points: 25, color: "#7d5d4a", ear: "#d89a8c" },
+};
+const BAT_EAT = 9;             // how fast a hungry bat eats once it lands on a sack
+const STAR_GRAIN = [25, 50, 75];   // % of grain left at dawn for 1, 2 and 3 stars; under the first, the night is lost
+
+// ---------- Nights (the levels) ----------
+// Finish a night (save any grain) to unlock the next. Each night is just settings:
+//   seconds: how long until dawn         spawn: [seconds between critters at the start, at the end]
+//   speed: critter speed (1 = normal)    ratsFrom: second the rats start (null = no rats)
+//   ratStart / ratMax: share of rats when they start, and the most they can get (0-1); it grows slowly between
+//   bats: [first bat at, then every min, max seconds] (null = no bats); every bat lands on a sack and eats
+//   holes: 6 or 8 wall holes             sacks: 3 or 4 grain sacks
+//   flicker: the lantern goes dim now and then: { dark: seconds each dark spell lasts, lit: [min, max] seconds of light between spells }
+//   batsOnly: no mice or rats come out of the holes, only bats
+const NIGHTS = [
+  { name: "First Shift", blurb: "Mice only. Learn to tap, wiggle and pounce.",
+    seconds: 60, spawn: [1.4, .85], speed: .92, ratsFrom: null, ratMax: 0, bats: null, holes: 6, sacks: 3 },
+  { name: "Rat Problem", blurb: "Three rats for every mouse. Slow, but they eat fast.",
+    seconds: 70, spawn: [1.5, .7], speed: .9, ratsFrom: 0, ratStart: .75, ratMax: .75, bats: [25, 14, 20], holes: 6, sacks: 3 },
+  { name: "Bat Night", blurb: "Only bats tonight, and every one lands on the grain.",
+    seconds: 70, spawn: [1.8, .8], speed: .95, ratsFrom: null, ratMax: 0, bats: [3, 1.35, 2.0], holes: 6, sacks: 3, batsOnly: true },
+  { name: "Two New Holes", blurb: "Eight holes now. Mice come from new places.",
+    seconds: 75, spawn: [2.1, .85], speed: 1, ratsFrom: 14, ratMax: .35, bats: [22, 10, 16], holes: 8, sacks: 3 },
+  { name: "Lantern Flicker", blurb: "The lantern keeps going dim. Watch the dark corners.",
+    seconds: 75, spawn: [1.8, .75], speed: 1.05, ratsFrom: 12, ratMax: .35, bats: [20, 10, 16], holes: 8, sacks: 3, flicker: { dark: 6, lit: [1.5, 3] } },
+  { name: "Harvest Moon", blurb: "The longest night. Fastest mice. Everything at once.",
+    seconds: 90, spawn: [2.3, .9], speed: 1, ratsFrom: 10, ratMax: .3, bats: [14, 9, 13], holes: 8, sacks: 3, flicker: { dark: 4.5, lit: [1.5, 4.5] } },
+];
+
+// ---------- Cat skins ----------
+// Each skin is just colors + a pattern + accessories; the cat drawing reads everything from here.
+// Anything a skin leaves out falls back to Barn Orange.
+// pattern: "tabby" (stripes), "solid", "tuxedo" (white chest, paws and face) or "calico" (patches)
+// accessories: collar (a color), hat and back (slots for later items; nothing is drawn for them yet)
+const SKINS = {
+  barnOrange: {
+    name: "Barn Orange", pattern: "tabby",
+    fur: "#e88a3a", marks: "#b4561f", tailTip: "#a9521c", paws: "#f3e2c8", muzzle: "#f6d9b8",
+    eyes: "#b6e35a", nose: "#f08aa0", earInner: "#f6b7a6",
+    patches: ["#f3e2c8", "#2b2522"], accessories: {},
+  },
+  // Two test skins, only to prove the system works. Players don't see them.
+  tuxedo: {
+    name: "Tuxedo", pattern: "tuxedo",
+    fur: "#2a262d", marks: "#2a262d", tailTip: "#18151a", paws: "#f1ece4", muzzle: "#f1ece4",
+    eyes: "#ffd25a", nose: "#e58a9a", earInner: "#d99aa5", accessories: { collar: "#d1453b" },
+  },
+  grayTabby: {
+    name: "Gray Tabby", pattern: "tabby",
+    fur: "#8d8f98", marks: "#555761", tailTip: "#4f515a", paws: "#dcdde2", muzzle: "#dcdde2",
+    eyes: "#7fd0e8", nose: "#d98a96", earInner: "#e2b0b8",
+  },
+};
+const makeSkin = (key) => {
+  const s = { ...SKINS.barnOrange, ...SKINS[key] };
+  s.accessories = s.accessories || {};
+  return s;
+};
+
+// ---------- The cat and its upgrades ----------
+// There's one cat, Pumpkin. Points from every night buy upgrades (5 levels each), starting from BASE_CAT.
+//   hop / reach: farthest quick hop, and farthest pounce after a full wiggle
+//   hopRadius / wiggleRadius: catch circle of a quick hop, and after a full wiggle
+//   leapBase + distance / leapSpeed: how many seconds a leap takes (smaller base, bigger speed = faster)
+const BASE_CAT = { hop: 90, reach: 175, hopRadius: 20, wiggleRadius: 44, leapBase: .2, leapSpeed: 800 };
+const UPGRADES = [   // "per" is what one level adds
+  { id: "reach", name: "Reach", blurb: "Hops and pounces go farther.", per: { hop: 7, reach: 13 } },
+  { id: "speed", name: "Speed", blurb: "Leaps get there faster.", per: { leapBase: -.012, leapSpeed: 80 } },
+  { id: "width", name: "Width", blurb: "A bigger catch circle.", per: { hopRadius: 1, wiggleRadius: 2 } },
+];
+const UPGRADE_COSTS = [500, 1500, 3000, 7500, 15000];   // points for rank 1, 2, 3, 4, 5 (82,500 to max all three)
+let CAT = { ...BASE_CAT }, SKIN = makeSkin("barnOrange");   // the cat's numbers (with upgrades) and its look
+
+// ---------- Canvas + sizing ----------
+const canvas = document.getElementById("game");
+let ctx = canvas.getContext("2d");   // swapped briefly to draw the cat pictures on the cat cards
+const stage = document.getElementById("stage");
+let dpr = 1, scale = 1;
+function resize() {
+  const r = stage.getBoundingClientRect();
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  scale = Math.min((r.width - 8) / W, (r.height - 8) / H);
+  canvas.style.width = W * scale + "px";
+  canvas.style.height = H * scale + "px";
+  canvas.width = Math.round(W * scale * dpr);
+  canvas.height = Math.round(H * scale * dpr);
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ---------- Seeded random for the floor art ----------
+let seed = 7;
+const srand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+const rand = (a, b) => a + Math.random() * (b - a);
+
+// ---------- The barn floor, drawn once ----------
+const floor = document.createElement("canvas");
+floor.width = W * 2; floor.height = H * 2;
+(function drawFloor() {
+  const f = floor.getContext("2d");
+  f.scale(2, 2);
+  f.fillStyle = "#2a1d17"; f.fillRect(0, 0, W, H);
+  // planks
+  for (let y = WALL; y < H - WALL; y += 34) {
+    let x = WALL - srand() * 80;
+    while (x < W - WALL) {
+      const len = 90 + srand() * 110;
+      const shade = 46 + Math.floor(srand() * 14);
+      f.fillStyle = `rgb(${shade + 14},${shade - 4},${shade - 16})`;
+      f.fillRect(x, y, len - 2, 32);
+      // grain lines
+      f.strokeStyle = "rgba(0,0,0,.18)"; f.lineWidth = 1;
+      for (let k = 0; k < 3; k++) {
+        const gy = y + 6 + srand() * 20;
+        f.beginPath(); f.moveTo(x + 4, gy);
+        f.bezierCurveTo(x + len * .3, gy + srand() * 4 - 2, x + len * .6, gy + srand() * 4 - 2, x + len - 6, gy);
+        f.stroke();
+      }
+      // nails
+      f.fillStyle = "rgba(20,12,8,.7)";
+      f.beginPath(); f.arc(x + 5, y + 8, 1.2, 0, 7); f.arc(x + 5, y + 24, 1.2, 0, 7); f.fill();
+      x += len;
+    }
+  }
+  // straw
+  for (let i = 0; i < 140; i++) {
+    const x = WALL + srand() * (W - 2 * WALL), y = WALL + srand() * (H - 2 * WALL), a = srand() * Math.PI, l = 5 + srand() * 9;
+    f.strokeStyle = `rgba(${220 + srand() * 30},${180 + srand() * 30},${90 + srand() * 30},${.35 + srand() * .3})`;
+    f.lineWidth = 1.1;
+    f.beginPath(); f.moveTo(x, y); f.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); f.stroke();
+  }
+  // ---- barn details (drawn once, under everything; kept near the walls so they don't hide critters) ----
+  // roof beams overhead cast two soft shadows across the floor
+  for (const by of [176, 418]) {
+    const g = f.createLinearGradient(0, by - 10, 0, by + 10);
+    g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(.5, "rgba(0,0,0,.16)"); g.addColorStop(1, "rgba(0,0,0,0)");
+    f.fillStyle = g; f.fillRect(WALL, by - 10, W - 2 * WALL, 20);
+  }
+  // knots and scuffs in the floorboards
+  for (let i = 0; i < 14; i++) {
+    const x = WALL + 20 + srand() * (W - 2 * WALL - 40), y = WALL + 20 + srand() * (H - 2 * WALL - 40);
+    f.fillStyle = `rgba(20,12,8,${.25 + srand() * .2})`;
+    f.beginPath(); f.ellipse(x, y, 1.5 + srand() * 2.5, 1 + srand() * 1.5, 0, 0, 7); f.fill();
+  }
+  const shadowRect = (x, y, w, h) => { f.fillStyle = "rgba(0,0,0,.35)"; f.fillRect(x + 3, y + 4, w, h); };
+  // hay bales stacked in the top-right corner
+  const bale = (x, y, w, h, turn) => {
+    f.save(); f.translate(x + w / 2, y + h / 2); f.rotate(turn); f.translate(-w / 2, -h / 2);
+    shadowRect(0, 0, w, h);
+    const g = f.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#e2bd62"); g.addColorStop(1, "#b48a3a");
+    f.fillStyle = g; f.fillRect(0, 0, w, h);
+    f.strokeStyle = "rgba(255,235,170,.35)"; f.lineWidth = .7;
+    for (let i = 0; i < 26; i++) { const sx = srand() * w, sy = srand() * h; f.beginPath(); f.moveTo(sx, sy); f.lineTo(sx + 4 + srand() * 5, sy + srand() * 2 - 1); f.stroke(); }
+    f.strokeStyle = "rgba(90,60,20,.45)"; f.lineWidth = .7;
+    for (let i = 0; i < 10; i++) { const sx = srand() * w, sy = srand() * h; f.beginPath(); f.moveTo(sx, sy); f.lineTo(sx + 3 + srand() * 4, sy + srand() * 2 - 1); f.stroke(); }
+    f.strokeStyle = "#7a4a22"; f.lineWidth = 1.4;   // twine
+    f.beginPath(); f.moveTo(w * .3, 0); f.lineTo(w * .3, h); f.moveTo(w * .7, 0); f.lineTo(w * .7, h); f.stroke();
+    f.strokeStyle = "rgba(70,45,15,.6)"; f.lineWidth = 1; f.strokeRect(0, 0, w, h);
+    f.restore();
+  };
+  bale(291, 20, 50, 28, .03);
+  bale(298, 52, 42, 26, -.06);
+  // a loose pile of hay in the bottom-left corner
+  for (let i = 0; i < 70; i++) {
+    const a = srand() * Math.PI * 2, d = Math.sqrt(srand()) * 26, x = 44 + Math.cos(a) * d * 1.2, y = 558 + Math.sin(a) * d * .7, l = 5 + srand() * 8, t = srand() * Math.PI;
+    f.strokeStyle = `rgba(${215 + srand() * 35},${170 + srand() * 40},${70 + srand() * 40},${.55 + srand() * .35})`; f.lineWidth = 1.2;
+    f.beginPath(); f.moveTo(x, y); f.lineTo(x + Math.cos(t) * l, y + Math.sin(t) * l); f.stroke();
+  }
+  // a water trough along the left wall
+  shadowRect(WALL + 1, 250, 18, 80);
+  f.fillStyle = "#5a3d28"; f.fillRect(WALL + 1, 250, 18, 80);
+  f.fillStyle = "#1f3440"; f.fillRect(WALL + 4, 253, 12, 74);
+  f.fillStyle = "rgba(160,200,220,.25)"; f.fillRect(WALL + 6, 258, 3, 30); f.fillRect(WALL + 11, 296, 2, 22);
+  f.strokeStyle = "rgba(20,12,8,.6)"; f.lineWidth = 1; f.strokeRect(WALL + 1, 250, 18, 80);
+  f.fillStyle = "#3c2a1d"; f.fillRect(WALL + 1, 288, 18, 3);
+  // a wooden bucket by the right wall
+  f.fillStyle = "rgba(0,0,0,.35)"; f.beginPath(); f.arc(325, 458, 10, 0, 7); f.fill();
+  f.fillStyle = "#7a5233"; f.beginPath(); f.arc(322, 455, 10, 0, 7); f.fill();
+  f.strokeStyle = "rgba(30,18,10,.5)"; f.lineWidth = .8;
+  for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; f.beginPath(); f.moveTo(322 + Math.cos(a) * 7, 455 + Math.sin(a) * 7); f.lineTo(322 + Math.cos(a) * 10, 455 + Math.sin(a) * 10); f.stroke(); }
+  f.strokeStyle = "#8e8a86"; f.lineWidth = 1.6; f.beginPath(); f.arc(322, 455, 9.2, 0, 7); f.stroke();
+  f.fillStyle = "#1f3440"; f.beginPath(); f.arc(322, 455, 6.4, 0, 7); f.fill();
+  f.fillStyle = "rgba(160,200,220,.3)"; f.beginPath(); f.ellipse(320, 453, 2.5, 1.4, -.5, 0, 7); f.fill();
+  // a pitchfork dropped on the floor
+  f.lineCap = "round";
+  f.strokeStyle = "rgba(0,0,0,.35)"; f.lineWidth = 3; f.beginPath(); f.moveTo(203, 566); f.lineTo(283, 546); f.stroke();
+  f.strokeStyle = "#8a5d36"; f.lineWidth = 2.6; f.beginPath(); f.moveTo(200, 562); f.lineTo(279, 542); f.stroke();
+  f.strokeStyle = "#9a9895"; f.lineWidth = 1.3;
+  f.beginPath(); f.moveTo(279, 542); f.lineTo(284, 541);
+  for (const o of [-4, -1.3, 1.3, 4]) { f.moveTo(283 + o * .25, 541 + o); f.lineTo(297 + o * .25, 537.5 + o); }
+  f.moveTo(283 - 1, 537); f.lineTo(283 + 1, 545); f.stroke();
+  // a horseshoe near the top-left
+  f.strokeStyle = "rgba(0,0,0,.35)"; f.lineWidth = 3.4; f.beginPath(); f.arc(58, 84, 7, Math.PI * .15, Math.PI * 1.85, false); f.stroke();
+  f.strokeStyle = "#8f8c88"; f.lineWidth = 3; f.beginPath(); f.arc(56, 81, 7, Math.PI * .15, Math.PI * 1.85, false); f.stroke();
+  f.fillStyle = "#4a4744"; for (const a of [.5, 1, 1.5]) { f.beginPath(); f.arc(56 + Math.cos(a * Math.PI) * 7, 81 + Math.sin(a * Math.PI) * 7, .7, 0, 7); f.fill(); }
+  f.lineCap = "butt";
+  // support posts against the walls
+  const post = (x, y) => {
+    f.fillStyle = "rgba(0,0,0,.4)"; f.fillRect(x + 3, y + 4, 16, 16);
+    const g = f.createLinearGradient(x, y, x + 16, y + 16); g.addColorStop(0, "#6b4a30"); g.addColorStop(1, "#43301f");
+    f.fillStyle = g; f.fillRect(x, y, 16, 16);
+    f.strokeStyle = "rgba(20,12,8,.6)"; f.lineWidth = 1; f.strokeRect(x, y, 16, 16);
+    f.strokeStyle = "rgba(255,220,170,.12)"; f.beginPath(); f.moveTo(x + 2, y + 2); f.lineTo(x + 14, y + 2); f.stroke();
+    f.strokeStyle = "rgba(20,12,8,.35)"; f.beginPath(); f.arc(x + 8, y + 8, 3, 0, 7); f.arc(x + 8, y + 8, 5.5, 0, 7); f.stroke();
+  };
+  post(WALL, 362); post(W - WALL - 16, 132); post(172, WALL); post(236, H - WALL - 16);
+  // cobwebs in two corners
+  const web = (cx, cy, dx, dy) => {
+    f.strokeStyle = "rgba(230,230,240,.2)"; f.lineWidth = .6;
+    for (let i = 0; i <= 4; i++) { const a = i / 4 * Math.PI / 2; f.beginPath(); f.moveTo(cx, cy); f.lineTo(cx + Math.cos(a) * 30 * dx, cy + Math.sin(a) * 30 * dy); f.stroke(); }
+    for (const r of [9, 17, 25]) {
+      f.beginPath();
+      for (let i = 0; i <= 4; i++) { const a = i / 4 * Math.PI / 2, x = cx + Math.cos(a) * r * dx, y = cy + Math.sin(a) * r * dy; i ? f.quadraticCurveTo(cx + Math.cos(a - .2) * (r - 2) * dx, cy + Math.sin(a - .2) * (r - 2) * dy, x, y) : f.moveTo(x, y); }
+      f.stroke();
+    }
+  };
+  web(WALL, WALL, 1, 1); web(W - WALL, H - WALL, -1, -1);
+  // walls
+  f.fillStyle = "#1c1310";
+  f.fillRect(0, 0, W, WALL); f.fillRect(0, H - WALL, W, WALL); f.fillRect(0, 0, WALL, H); f.fillRect(W - WALL, 0, WALL, H);
+  f.strokeStyle = "rgba(255,210,150,.08)"; f.lineWidth = 2;
+  f.strokeRect(WALL, WALL, W - 2 * WALL, H - 2 * WALL);
+  // wall boards: seams and nails so the walls read as wood
+  f.strokeStyle = "rgba(255,210,150,.07)"; f.lineWidth = 1;
+  for (let x = 24; x < W; x += 22) { f.beginPath(); f.moveTo(x, 0); f.lineTo(x, WALL); f.moveTo(x, H - WALL); f.lineTo(x, H); f.stroke(); }
+  for (let y = 24; y < H; y += 22) { f.beginPath(); f.moveTo(0, y); f.lineTo(WALL, y); f.moveTo(W - WALL, y); f.lineTo(W, y); f.stroke(); }
+  f.fillStyle = "rgba(255,220,170,.12)";
+  for (let x = 13; x < W; x += 22) { f.beginPath(); f.arc(x, 5, .8, 0, 7); f.arc(x, H - 5, .8, 0, 7); f.fill(); }
+})();
+
+// ---------- Places ----------
+const HOLES = [   // the first 6 are always open; the last 2 open on nights with holes: 8
+  { x: WALL, y: 130, a: 0 }, { x: WALL, y: 450, a: 0 },
+  { x: W - WALL, y: 230, a: Math.PI }, { x: W - WALL, y: 520, a: Math.PI },
+  { x: 110, y: H - WALL, a: -Math.PI / 2 }, { x: 250, y: WALL, a: Math.PI / 2 },
+  { x: 100, y: WALL, a: Math.PI / 2 }, { x: W - WALL, y: 380, a: Math.PI },
+];
+const SACK_LAYOUTS = {
+  3: [{ x: 202, y: 184 }, { x: 142, y: 286 }, { x: 208, y: 395 }],   // a zig-zag down the middle (Trey's layout)
+  4: [{ x: 86, y: 222 }, { x: 274, y: 236 }, { x: 98, y: 428 }, { x: 262, y: 440 }],
+};
+const LANTERN = { x: W / 2, y: 300 };
+
+// ---------- Game state ----------
+let state = "menu";
+let queued = null;   // a tap made while the cat was still in the air
+let nightIndex = 0, N = NIGHTS[0];   // which night is being played, and its settings
+let holes, sacks, critters, effects, cat, t, spawnT, batT, score, streak, caught, aim, lastFrame, lamp;
+
+function reset() {
+  N = NIGHTS[nightIndex];
+  holes = HOLES.slice(0, N.holes);
+  sacks = SACK_LAYOUTS[N.sacks].map((p) => ({ x: p.x, y: p.y, hp: 100 }));
+  critters = []; effects = [];
+  // the cat starts in an open spot on the right, clear of the sacks in both layouts
+  cat = { x: 270, y: 330, a: Math.PI / 2, leap: null, rest: 0, crouch: 0, squash: 0 };
+  t = 0; spawnT = 1.2; batT = N.bats ? N.bats[0] : Infinity; score = 0; streak = 0;
+  lamp = { next: rand(4, 6), dimT: 0, d: 0 };   // lantern flicker timing (flicker nights only)
+  caught = { mouse: 0, rat: 0, bat: 0 };
+  aim = null; queued = null;
+  updateHud();
+}
+
+// ---------- Sound (starts after the first tap) ----------
+let audio = null, muted = false;
+const muteBtn = document.getElementById("muteBtn");
+function tone(f1, f2, dur, type = "sine", vol = .08) {
+  if (!audio || muted) return;
+  const o = audio.createOscillator(), g = audio.createGain(), now = audio.currentTime;
+  o.type = type; o.frequency.setValueAtTime(f1, now); o.frequency.exponentialRampToValueAtTime(f2, now + dur);
+  g.gain.setValueAtTime(vol, now); g.gain.exponentialRampToValueAtTime(.0001, now + dur);
+  o.connect(g).connect(audio.destination); o.start(now); o.stop(now + dur + .02);
+}
+const sfx = {
+  squeak: () => { tone(1800, 2600, .07, "square", .04); setTimeout(() => tone(2300, 1500, .08, "square", .035), 60); },
+  thump: () => tone(140, 60, .12, "sine", .12),
+  bat: () => tone(900, 300, .25, "triangle", .06),
+  miss: () => tone(320, 220, .1, "triangle", .05),
+  rustle: () => tone(rand(180, 240), 110, .06, "triangle", .025),
+  bolt: () => tone(2400, 3400, .06, "square", .025),
+  flicker: () => { tone(160, 90, .12, "sawtooth", .03); setTimeout(() => tone(140, 70, .18, "sawtooth", .025), 140); },
+};
+muteBtn.onclick = () => {
+  muted = !muted;
+  muteBtn.textContent = muted ? "🔇" : "🔈";
+  muteBtn.setAttribute("aria-label", muted ? "Sound on" : "Sound off");
+};
+
+// ---------- Input: drag and let go, or tap ----------
+function toWorld(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+}
+function clampToBarn(p) {
+  return { x: Math.max(WALL + 14, Math.min(W - WALL - 14, p.x)), y: Math.max(WALL + 14, Math.min(H - WALL - 14, p.y)) };
+}
+// How wound-up the pounce is: 0 for a quick tap, 1 after a full wiggle.
+function wigglePower(hold) {
+  return Math.max(0, Math.min(1, (hold - TAP_TIME) / (WIGGLE_FULL - TAP_TIME)));
+}
+const leapReach = (power) => CAT.hop + (CAT.reach - CAT.hop) * power;
+const catchRadius = (power) => CAT.hopRadius + (CAT.wiggleRadius - CAT.hopRadius) * power;
+function leapTarget(spot, power) {
+  // The cat leaps toward your finger: tap a spot, or hold and slide to fine-tune.
+  let tx = spot.x - cat.x, ty = spot.y - cat.y;
+  const len = Math.hypot(tx, ty), reach = leapReach(power);
+  if (len > reach) { tx *= reach / len; ty *= reach / len; }
+  return clampToBarn({ x: cat.x + tx, y: cat.y + ty });
+}
+canvas.addEventListener("pointerdown", (e) => {
+  if (state !== "play") return;
+  canvas.setPointerCapture(e.pointerId);
+  const p = toWorld(e);
+  aim = { sx: p.x, sy: p.y, x: p.x, y: p.y, hold: 0 };   // hold grows in update(), so pausing doesn't count
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (!aim) return;
+  const p = toWorld(e); aim.x = p.x; aim.y = p.y;
+});
+function release() {   // let go of the press: pounce now, or right after landing
+  if (!aim) return;
+  const spot = { x: aim.x, y: aim.y, power: wigglePower(aim.hold) };
+  aim = null;
+  if (!cat.leap && cat.rest <= 0) pounce(leapTarget(spot, spot.power), spot.power);
+  else queued = spot;   // still in the air: jump there as soon as it lands
+}
+canvas.addEventListener("pointerup", release);
+canvas.addEventListener("pointercancel", () => { aim = null; });
+
+function pounce(to, power) {
+  const d = Math.hypot(to.x - cat.x, to.y - cat.y);
+  if (d < 6) return;
+  cat.a = Math.atan2(to.y - cat.y, to.x - cat.x);
+  cat.leap = { fx: cat.x, fy: cat.y, tx: to.x, ty: to.y, t: 0, dur: CAT.leapBase + d / CAT.leapSpeed, swept: new Set(), r: catchRadius(power) };
+}
+
+function land(swept, r) {
+  const hits = critters.filter((c) => !c.gone && c.state !== "hide" && (Math.hypot(c.x - cat.x, c.y - cat.y) < r + c.r || (swept && swept.has(c))));
+  if (hits.length) {
+    streak++;
+    hits.forEach((c, i) => {
+      c.gone = true;
+      caught[c.type]++;
+      const pts = (c.type === "bat" ? 50 : TYPES[c.type].points) * Math.min(5, streak) * (hits.length > 1 ? 2 : 1);
+      score += pts;
+      effects.push({ kind: "text", x: c.x, y: c.y - 8, text: "+" + pts, life: 1, max: 1 });
+      for (let k = 0; k < 7; k++) effects.push({ kind: "spark", x: c.x, y: c.y, vx: rand(-60, 60), vy: rand(-80, 10), life: .5, max: .5 });
+      setTimeout(c.type === "bat" ? sfx.bat : sfx.squeak, i * 70);
+    });
+    if (hits.length > 1) effects.push({ kind: "text", x: cat.x, y: cat.y - 34, text: hits.length + " at once!", life: 1.3, max: 1.3, big: true });
+    else if (streak >= 3) effects.push({ kind: "text", x: cat.x, y: cat.y - 34, text: "x" + Math.min(5, streak) + " streak", life: 1.1, max: 1.1, big: true });
+  } else {
+    if (streak > 1) effects.push({ kind: "text", x: cat.x, y: cat.y - 30, text: "missed", life: .9, max: .9, dim: true });
+    streak = 0;
+    sfx.miss();
+  }
+  sfx.thump();
+  effects.push({ kind: "ring", x: cat.x, y: cat.y, r, life: .35, max: .35 });
+  effects.push({ kind: "paws", x: cat.x, y: cat.y, a: cat.a, life: 2.5, max: 2.5 });
+  // everything nearby scatters (bolting mice keep running home)
+  critters.forEach((c) => {
+    if (c.type !== "bat" && !c.gone && c.state !== "bolt" && c.state !== "hide" && Math.hypot(c.x - cat.x, c.y - cat.y) < 95) { c.state = "flee"; c.fleeT = .9; }
+  });
+  critters = critters.filter((c) => !c.gone);
+  cat.rest = .12;
+  cat.squash = 1;   // just for looks: a little squash on landing
+  updateHud();
+}
+
+// ---------- Critters ----------
+function spawnCritter() {
+  if (critters.length > 28 || N.batsOnly) return;
+  const h = holes[Math.floor(Math.random() * holes.length)];
+  const ratChance = Math.min(N.ratMax, (N.ratStart ?? .1) + t / 200);
+  const type = N.ratsFrom != null && t >= N.ratsFrom && Math.random() < ratChance ? "rat" : "mouse";
+  critters.push({
+    type, x: h.x + Math.cos(h.a) * 10, y: h.y + Math.sin(h.a) * 10, a: h.a,
+    state: "run", fleeT: 0, wob: Math.random() * 6, r: TYPES[type].r,
+    hole: h, alert: 0, nerve: rand(.8, 1.2),   // nerve: some mice notice the wiggle sooner than others
+  });
+}
+function spawnBat() {
+  const left = Math.random() < .5;
+  const bat = { type: "bat", x: left ? -20 : W + 20, y: rand(150, 470), baseY: 0, vx: (left ? 1 : -1) * rand(70, 95), r: 10, flap: 0, a: 0, state: "fly" };
+  bat.baseY = bat.y;
+  // every bat is hungry: it swoops down to a sack, lands on it and eats until caught (or full);
+  // only if all the grain is gone does it just fly across
+  const food = sacks.filter((s) => s.hp > 0);
+  if (food.length) {
+    const s = food[Math.floor(Math.random() * food.length)];
+    const side = Math.random() < .5 ? -1 : 1;
+    Object.assign(bat, { state: "swoop", sack: s, px: s.x + side * 5, py: s.y - 12 });   // lands on the grain heaped in the sack's mouth
+  }
+  critters.push(bat);
+  sfx.bat();
+}
+function moveBat(c, dt) {
+  c.flap += dt * (c.state === "perch" ? 3 : 14);
+  if (c.state === "swoop") {   // fly to the sack
+    const d = Math.hypot(c.px - c.x, c.py - c.y), step = 120 * dt;
+    if (d <= step) { c.x = c.px; c.y = c.py; c.state = "perch"; c.perchT = 6; return; }
+    c.x += (c.px - c.x) / d * step; c.y += (c.py - c.y) / d * step + Math.sin(c.flap * .5) * .6;
+  } else if (c.state === "perch") {   // sitting on the sack, eating
+    c.perchT -= dt;
+    c.sack.hp = Math.max(0, c.sack.hp - BAT_EAT * dt);
+    if (c.perchT <= 0 || c.sack.hp <= 0) { c.state = "leave"; c.vx = c.x < W / 2 ? -110 : 110; }
+  } else if (c.state === "leave") {   // full: flap away up and out
+    c.x += c.vx * dt; c.y -= 60 * dt;
+    if (c.x < -40 || c.x > W + 40 || c.y < -40) c.gone = true;
+  } else {                     // just flying across
+    c.x += c.vx * dt;
+    c.y = c.baseY + Math.sin(c.x / 38) * 40;
+    if (c.x < -40 || c.x > W + 40) c.gone = true;
+  }
+}
+function nearestSack(c) {
+  let best = null, bd = 1e9;
+  for (const s of sacks) if (s.hp > 0) { const d = Math.hypot(s.x - c.x, s.y - c.y); if (d < bd) { bd = d; best = s; } }
+  return best;
+}
+function moveCritter(c, dt) {
+  if (c.type === "bat") return moveBat(c, dt);
+  const T = TYPES[c.type];
+  c.wob += dt * 12;
+  let tx, ty, sp = T.speed * N.speed;
+  if (c.state === "hide") {
+    // hiding in its hole after a scare; it comes back out a few seconds later, a little bolder
+    c.hideT -= dt;
+    if (c.hideT <= 0) { c.state = "run"; c.x = c.hole.x + Math.cos(c.hole.a) * 10; c.y = c.hole.y + Math.sin(c.hole.a) * 10; }
+    return;
+  }
+  if (c.state === "bolt") {
+    // spotted the wiggle: run straight home and hide
+    tx = c.hole.x; ty = c.hole.y; sp *= 2.2;
+    if (Math.hypot(tx - c.x, ty - c.y) < 10) { c.state = "hide"; c.hideT = rand(HIDE_TIME[0], HIDE_TIME[1]); return; }
+    c.a = Math.atan2(ty - c.y, tx - c.x);
+    c.x = Math.max(WALL + 4, Math.min(W - WALL - 4, c.x + Math.cos(c.a) * sp * dt));
+    c.y = Math.max(WALL + 4, Math.min(H - WALL - 4, c.y + Math.sin(c.a) * sp * dt));
+    return;
+  }
+  if (c.state === "flee") {
+    c.fleeT -= dt;
+    const a = Math.atan2(c.y - cat.y, c.x - cat.x);
+    tx = c.x + Math.cos(a) * 50; ty = c.y + Math.sin(a) * 50; sp *= 1.7;
+    if (c.fleeT <= 0) c.state = "run";
+  } else {
+    const s = nearestSack(c);
+    if (!s) { tx = c.x + Math.cos(c.wob) * 20; ty = c.y + Math.sin(c.wob * .7) * 20; }
+    else {
+      const d = Math.hypot(s.x - c.x, s.y - c.y);
+      if (d < 26) { c.state = "eat"; s.hp = Math.max(0, s.hp - T.eat * dt); c.a = Math.atan2(s.y - c.y, s.x - c.x); return; }
+      c.state = "run"; tx = s.x; ty = s.y;
+    }
+  }
+  const a = Math.atan2(ty - c.y, tx - c.x) + Math.sin(c.wob) * .25;
+  c.a = a;
+  c.x = Math.max(WALL + 4, Math.min(W - WALL - 4, c.x + Math.cos(a) * sp * dt));
+  c.y = Math.max(WALL + 4, Math.min(H - WALL - 4, c.y + Math.sin(a) * sp * dt));
+}
+
+// ---------- Update ----------
+function update(dt) {
+  t += dt;
+  spawnT -= dt;
+  if (spawnT <= 0) {
+    spawnCritter();
+    const p = Math.min(1, t / N.seconds);   // critters come faster as the night goes on
+    spawnT = (N.spawn[0] + (N.spawn[1] - N.spawn[0]) * p) * rand(.7, 1.3);
+  }
+  batT -= dt;
+  if (batT <= 0) { spawnBat(); batT = rand(N.bats[1], N.bats[2]); }
+  // Lantern Flicker: every so often the lantern sputters, then stays dim for a few seconds
+  if (N.flicker) {
+    lamp.next -= dt; lamp.dimT -= dt;
+    const F = N.flicker, sputter = F.dark - .7;   // the first .7 s of each dark spell, the lantern sputters
+    if (lamp.next <= 0) { lamp.dimT = F.dark; lamp.next = F.dark + rand(F.lit[0], F.lit[1]); sfx.flicker(); }
+    const target = lamp.dimT > sputter ? (Math.random() < .5 ? 1 : .2) : lamp.dimT > 0 ? 1 : 0;
+    lamp.d += (target - lamp.d) * Math.min(1, dt * (lamp.dimT > sputter ? 30 : 4));
+  }
+
+  if (cat.leap) {
+    const L = cat.leap;
+    L.t += dt;
+    const k = Math.min(1, L.t / L.dur);
+    const e = 1 - Math.pow(1 - k, 2);
+    cat.x = L.fx + (L.tx - L.fx) * e; cat.y = L.fy + (L.ty - L.fy) * e;
+    if (k > .65) critters.forEach((c) => { if (c.state !== "hide" && Math.hypot(c.x - cat.x, c.y - cat.y) < L.r + c.r) L.swept.add(c); });
+    if (k >= 1) { cat.leap = null; land(L.swept, L.r); }
+  } else if (cat.rest > 0) cat.rest -= dt;
+  else if (queued) { const q = queued; queued = null; pounce(leapTarget(q, q.power), q.power); }
+  if (aim) aim.hold += dt;
+  // the cat can only hold a wiggle so long before it pounces by itself (no hiding in the middle forever)
+  if (aim && aim.hold >= WIGGLE_MAX && !cat.leap && cat.rest <= 0) release();
+  cat.squash = Math.max(0, cat.squash - dt * 7);
+  cat.crouch += ((aim ? 1 : 0) - cat.crouch) * Math.min(1, dt * 12);
+
+  // Butt Wiggle: nearby mice slowly catch on ("?" then "!!"), then bolt for their hole
+  const wiggling = aim && !cat.leap && aim.hold > TAP_TIME;
+  if (wiggling) {
+    wiggleSoundT -= dt;
+    if (wiggleSoundT <= 0) { sfx.rustle(); wiggleSoundT = .22; }
+  }
+  critters.forEach((c) => {
+    if (c.type === "bat" || c.state === "bolt" || c.state === "hide") return;
+    if (wiggling && Math.hypot(c.x - cat.x, c.y - cat.y) < NOTICE_RANGE) {
+      c.alert += dt;
+      if (c.alert >= NOTICE_BOLT * c.nerve) { c.state = "bolt"; c.alert = 0; c.nerve *= GETS_BOLDER; sfx.bolt(); }
+    } else c.alert = Math.max(0, c.alert - dt * 1.5);   // calms down once the wiggle stops
+  });
+
+  critters.forEach((c) => moveCritter(c, dt));
+  critters = critters.filter((c) => !c.gone);
+  effects.forEach((f) => {
+    f.life -= dt;
+    if (f.kind === "spark") { f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 200 * dt; }
+    if (f.kind === "text") f.y -= 22 * dt;
+  });
+  effects = effects.filter((f) => f.life > 0);
+
+  const grain = sacks.reduce((n, s) => n + s.hp, 0);
+  if (grain <= 0) return finish(false);
+  if (t >= N.seconds) return finish(true);
+  hudTimer -= dt;
+  if (hudTimer <= 0) { updateHud(); hudTimer = .15; }
+}
+let hudTimer = 0, wiggleSoundT = 0;
+
+// ---------- Drawing ----------
+function drawHole(h) {
+  ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(h.a);
+  ctx.fillStyle = "#0b0706";
+  ctx.beginPath(); ctx.ellipse(0, 0, 9, 13, 0, -Math.PI / 2, Math.PI / 2); ctx.fill();
+  ctx.restore();
+}
+// A standing burlap sack with its top rolled down and golden grain heaped inside.
+// As it's eaten the grain level drops, the sack gets shorter, and kernels scatter on the floor.
+// Empty, it's a flat, crumpled sack.
+const GOLD = ["#fbe39a", "#e8c262", "#b98a35"];
+const SPILL = Array.from({ length: 22 }, () => ({ x: srand() * 2 - 1, y: srand(), turn: srand() * 3 }));   // where spilled kernels land
+function burlap(x0, y0, x1, y1, light = "#d9b47c", dark = "#a77f4d") {
+  const g = ctx.createLinearGradient(x0, y0, x1, y1);
+  g.addColorStop(0, light); g.addColorStop(1, dark);
+  return g;
+}
+function weave(path) {   // faint burlap threads inside a shape
+  ctx.save(); path(); ctx.clip();
+  ctx.strokeStyle = "rgba(90,60,30,.14)"; ctx.lineWidth = .5;
+  ctx.beginPath();
+  for (let i = -30; i <= 30; i += 2.2) { ctx.moveTo(i, -30); ctx.lineTo(i, 30); ctx.moveTo(-30, i); ctx.lineTo(30, i); }
+  ctx.stroke(); ctx.restore();
+}
+function spillKernels(n, cx, cy, sx, sy) {
+  for (let i = 0; i < n; i++) {
+    const k = SPILL[i];
+    ctx.save(); ctx.translate(cx + k.x * sx, cy + k.y * sy); ctx.rotate(k.turn);
+    ctx.fillStyle = i % 3 ? "#e3bf62" : "#c99a3e";
+    ctx.beginPath(); ctx.ellipse(0, 0, 1.6, .95, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+}
+function grainHeap(cx, baseY, rx, h) {   // a golden mound with shading and shiny kernels
+  const g = ctx.createRadialGradient(cx - rx * .3, baseY - h * .8, 1, cx, baseY - h * .3, rx * 1.2);
+  g.addColorStop(0, GOLD[0]); g.addColorStop(.55, GOLD[1]); g.addColorStop(1, GOLD[2]);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(cx - rx, baseY);
+  ctx.bezierCurveTo(cx - rx * .7, baseY - h * .9, cx - rx * .25, baseY - h, cx, baseY - h);
+  ctx.bezierCurveTo(cx + rx * .25, baseY - h, cx + rx * .7, baseY - h * .9, cx + rx, baseY);
+  ctx.ellipse(cx, baseY, rx, Math.max(1, rx * .25), 0, 0, Math.PI);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,248,215,.75)";
+  for (let i = 0; i < Math.min(8, rx * .7); i++) {
+    const k = SPILL[i];
+    ctx.beginPath(); ctx.ellipse(cx + k.x * rx * .6, baseY - h * (.25 + k.y * .6), 1.1, .65, k.turn, 0, 7); ctx.fill();
+  }
+}
+function sideShade(path, x0, x1, y0, y1) {   // light on the left, shadow on the right
+  ctx.save(); path(); ctx.clip();
+  const sh = ctx.createLinearGradient(x0, 0, x1, 0);
+  sh.addColorStop(0, "rgba(255,240,210,.18)"); sh.addColorStop(.6, "rgba(0,0,0,0)"); sh.addColorStop(1, "rgba(0,0,0,.25)");
+  ctx.fillStyle = sh; ctx.fillRect(x0 - 5, y0, x1 - x0 + 10, y1 - y0);
+  ctx.restore();
+}
+function drawSack(s) {
+  const full = s.hp / 100, empty = 1 - full;
+  ctx.save(); ctx.translate(s.x, s.y);
+  spillKernels(Math.round(4 + empty * 12), 0, 13, 22, 5);
+  if (full <= 0) {   // a flat, crumpled, empty sack
+    ctx.fillStyle = "rgba(0,0,0,.32)"; ctx.beginPath(); ctx.ellipse(1, 13, 18, 5, 0, 0, 7); ctx.fill();
+    const flat = () => { ctx.beginPath(); ctx.moveTo(-17, 12); ctx.bezierCurveTo(-15, 4, -4, 5, 0, 6); ctx.bezierCurveTo(5, 3, 16, 5, 17, 12); ctx.quadraticCurveTo(0, 16, -17, 12); ctx.closePath(); };
+    flat(); ctx.fillStyle = burlap(-17, 4, 17, 16, "#a58a62", "#7c6446"); ctx.fill();
+    ctx.strokeStyle = "rgba(60,35,15,.55)"; ctx.lineWidth = 1; ctx.stroke();
+    weave(flat);
+    ctx.strokeStyle = "rgba(60,35,15,.35)";
+    ctx.beginPath(); ctx.moveTo(-9, 8); ctx.quadraticCurveTo(-3, 11, 2, 8); ctx.moveTo(4, 11); ctx.lineTo(11, 9); ctx.stroke();
+  } else {
+    const h = 18 + 12 * full, w = 16 + empty * 2.5, top = 15 - h;
+    ctx.fillStyle = "rgba(0,0,0,.32)"; ctx.beginPath(); ctx.ellipse(1, 15, w + 2, 4.5, 0, 0, 7); ctx.fill();
+    const body = () => {
+      ctx.beginPath(); ctx.moveTo(-w + 2, 15);
+      ctx.bezierCurveTo(-w - 3, 6, -w, top + 6, -w + 1, top + 3); ctx.lineTo(w - 1, top + 3);
+      ctx.bezierCurveTo(w, top + 6, w + 3, 6, w - 2, 15); ctx.quadraticCurveTo(0, 18, -w + 2, 15); ctx.closePath();
+    };
+    body(); ctx.fillStyle = burlap(-w, top, w, 16); ctx.fill();
+    ctx.strokeStyle = "rgba(60,35,15,.6)"; ctx.lineWidth = 1.2; ctx.stroke();
+    weave(body);
+    sideShade(body, -w, w, top, 18);
+    // the open mouth: dark inside, grain heaped up, then the rolled-down cuff in front
+    ctx.fillStyle = "#2e2013"; ctx.beginPath(); ctx.ellipse(0, top + 3, w - 2, 4, 0, 0, 7); ctx.fill();
+    grainHeap(0, top + 4, (w - 3) * (.55 + .45 * full), 3 + 7 * full);
+    ctx.fillStyle = "#c39a62";
+    ctx.beginPath(); ctx.moveTo(-w + .5, top + 3); ctx.quadraticCurveTo(0, top + 9, w - .5, top + 3);
+    ctx.lineTo(w - .5, top + 7); ctx.quadraticCurveTo(0, top + 13, -w + .5, top + 7); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "rgba(60,35,15,.55)"; ctx.lineWidth = .9; ctx.stroke();
+    ctx.strokeStyle = "rgba(255,235,195,.35)";
+    ctx.beginPath(); ctx.moveTo(-w + 3, top + 4.6); ctx.quadraticCurveTo(0, top + 9.6, w - 3, top + 4.6); ctx.stroke();
+  }
+  // health ring
+  if (full > 0 && full < 1) {
+    ctx.strokeStyle = full < .35 ? "#e2574c" : "#e6c46f"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, -2, 27, -Math.PI / 2, -Math.PI / 2 + full * Math.PI * 2); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawRodent(c) {
+  if (c.state === "hide") return;   // in its hole
+  const T = TYPES[c.type], k = c.r / 7;
+  ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.a); ctx.scale(k, k);
+  // tail
+  ctx.strokeStyle = T.ear; ctx.lineWidth = 1.3 / k * 1.2; ctx.lineCap = "round";
+  const w = Math.sin(c.wob * 1.3) * 4;
+  ctx.beginPath(); ctx.moveTo(-7, 0); ctx.bezierCurveTo(-13, w, -16, -w, -22, w * .6); ctx.stroke();
+  // body
+  ctx.fillStyle = T.color;
+  ctx.beginPath(); ctx.ellipse(0, 0, 8, 5, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(7, 0, 4.5, 3.4, 0, 0, 7); ctx.fill();
+  // ears
+  ctx.fillStyle = T.ear;
+  ctx.beginPath(); ctx.arc(5, -3.6, 2.2, 0, 7); ctx.arc(5, 3.6, 2.2, 0, 7); ctx.fill();
+  // nose + eyes
+  ctx.fillStyle = "#f4a1b4"; ctx.beginPath(); ctx.arc(11.3, 0, 1.1, 0, 7); ctx.fill();
+  ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(8.5, -1.6, .8, 0, 7); ctx.arc(8.5, 1.6, .8, 0, 7); ctx.fill();
+  ctx.restore();
+  if (c.state === "eat") {
+    ctx.fillStyle = "rgba(240,210,120,.8)";
+    ctx.beginPath(); ctx.arc(c.x + Math.cos(c.a) * 12 + Math.sin(c.wob * 3) * 2, c.y + Math.sin(c.a) * 12, 1.2, 0, 7); ctx.fill();
+  }
+  // "?" when it starts to notice the wiggle, "!!" when it's about to bolt
+  const alarm = c.state === "bolt" || c.alert >= NOTICE_ALARM * c.nerve;
+  if (alarm || c.alert >= NOTICE_ASK * c.nerve) drawBubble(c.x, c.y - c.r - 14, alarm ? "!!" : "?", alarm);
+}
+function drawBubble(x, y, text, alarm) {
+  const bob = Math.sin(performance.now() / 90) * (alarm ? 1.5 : .6);
+  ctx.save(); ctx.translate(x, y + bob);
+  ctx.fillStyle = alarm ? "#ffd27a" : "#fff3dc"; ctx.strokeStyle = "rgba(20,10,5,.85)"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(0, 0, alarm ? 10 : 8, 8, 0, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-2, 7); ctx.lineTo(0, 12); ctx.lineTo(3, 7); ctx.fill();
+  ctx.fillStyle = alarm ? "#b0321f" : "#3a2a1c";
+  ctx.font = '13px "Lilita One", "Trebuchet MS", sans-serif'; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(text, 0, 1);
+  ctx.restore();
+}
+function drawBat(c) {
+  ctx.save(); ctx.translate(c.x, c.y);
+  const perched = c.state === "perch";
+  const f = perched ? .9 + Math.sin(c.flap) * .08 : Math.sin(c.flap) * .55;   // wings fold in while it eats
+  // shadow: far below while flying, right underneath once it has landed
+  ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.beginPath();
+  if (perched) ctx.ellipse(1, 6, 8, 3, 0, 0, 7); else ctx.ellipse(6, 26, 12, 4, 0, 0, 7);
+  ctx.fill();
+  ctx.fillStyle = "#2b2236";
+  for (const side of [-1, 1]) {
+    ctx.save(); ctx.scale(side, 1); ctx.rotate(f); if (perched) ctx.scale(.6, .8);
+    ctx.beginPath(); ctx.moveTo(3, 0); ctx.quadraticCurveTo(12, -12, 22, -4); ctx.lineTo(17, 0); ctx.lineTo(19, 5); ctx.lineTo(12, 3); ctx.lineTo(9, 7); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  if (perched) {   // grain crumbs flying while it eats
+    ctx.fillStyle = "rgba(240,210,120,.85)";
+    ctx.beginPath(); ctx.arc(Math.sin(c.flap * 9) * 4, 9 + Math.cos(c.flap * 7) * 2, 1.2, 0, 7); ctx.fill();
+  }
+  ctx.beginPath(); ctx.ellipse(0, 0, 5, 6.5, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-4, -4); ctx.lineTo(-3, -10); ctx.lineTo(-1, -5); ctx.moveTo(4, -4); ctx.lineTo(3, -10); ctx.lineTo(1, -5); ctx.fill();
+  ctx.fillStyle = "#ffd25a"; ctx.beginPath(); ctx.arc(-1.8, -2, 1.1, 0, 7); ctx.arc(1.8, -2, 1.1, 0, 7); ctx.fill();
+  ctx.restore();
+}
+// The cat is drawn in layers (tail, paws, body, pattern, head, face, accessories),
+// and every color comes from SKIN, so new skins need no new drawing code.
+// It faces +x: the head is at the front (x about 17), the tail at the back.
+const bez = (a, b, c, d, t) => { const u = 1 - t; return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d; };
+function catBodyPath(w) {   // pear shape: narrow shoulders, round hips (w = hip wiggle)
+  ctx.beginPath();
+  ctx.moveTo(15, -6);
+  ctx.bezierCurveTo(10, -10, 3, -9.5, -4, -10.5 + w);
+  ctx.bezierCurveTo(-12, -13 + w, -19, -9 + w, -19, w);
+  ctx.bezierCurveTo(-19, 9 + w, -12, 13 + w, -4, 10.5 + w);
+  ctx.bezierCurveTo(3, 9.5, 10, 10, 15, 6);
+  ctx.closePath();
+}
+function catHeadPath() {    // round head with fluffy cheeks
+  ctx.beginPath();
+  ctx.arc(17, 0, 9, 0, Math.PI * 2);
+  ctx.moveTo(19, -6.5); ctx.ellipse(14, -6.5, 5, 4, 0, 0, Math.PI * 2);
+  ctx.moveTo(19, 6.5); ctx.ellipse(14, 6.5, 5, 4, 0, 0, Math.PI * 2);
+}
+function rimLight(la, cx, cy, reach) {   // warm glow on the side facing the lantern
+  const gx = cx + Math.cos(la) * reach, gy = cy + Math.sin(la) * reach;
+  const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, reach * 1.2);
+  g.addColorStop(0, "rgba(255,196,110,.38)"); g.addColorStop(1, "rgba(255,196,110,0)");
+  ctx.fillStyle = g; ctx.fillRect(cx - 30, cy - 30, 60, 60);
+}
+const ACCESSORY_DRAW = {
+  collar(color) {             // drawn around the back of the head, where the neck is
+    ctx.strokeStyle = color; ctx.lineWidth = 2.4; ctx.lineCap = "butt";
+    ctx.beginPath(); ctx.arc(17, 0, 9.2, Math.PI * .66, Math.PI * 1.34); ctx.stroke();
+    ctx.fillStyle = "#f2c94c"; ctx.beginPath(); ctx.arc(7.9, 0, 1.5, 0, 7); ctx.fill();
+  },
+  // hat(item) and back(item) get drawn here once those items are designed
+};
+function drawAccessory(slot) {
+  const item = SKIN.accessories[slot];
+  if (item && ACCESSORY_DRAW[slot]) ACCESSORY_DRAW[slot](item);
+}
+function drawCat() {
+  let lift = 0;
+  if (cat.leap) lift = Math.sin(Math.PI * Math.min(1, cat.leap.t / cat.leap.dur));
+  // shadow
+  ctx.fillStyle = `rgba(0,0,0,${.35 - lift * .15})`;
+  ctx.beginPath(); ctx.ellipse(cat.x + lift * 10, cat.y + 6 + lift * 14, 18 - lift * 4, 10 - lift * 3, cat.a, 0, 7); ctx.fill();
+
+  const s = 1 + lift * .35;
+  const crouch = cat.crouch, sq = cat.squash || 0;
+  // the butt wiggle before a pounce: wider and faster the longer you hold
+  const power = aim && !cat.leap ? wigglePower(aim.hold) : 0;
+  const wiggle = crouch * Math.sin(performance.now() / (45 - power * 15)) * (1.6 + power * 3);
+  const w = wiggle * .5;
+  const la = Math.atan2(LANTERN.y - cat.y, LANTERN.x - cat.x) - cat.a;   // lantern direction, in the cat's own frame
+  ctx.save(); ctx.translate(cat.x, cat.y - lift * 10); ctx.rotate(cat.a);
+  // stretch long in the air, squash a little on landing
+  ctx.scale(s * (1 + lift * .16 - sq * .12), s * (1 - lift * .08 + sq * .14) * (1 - crouch * .12));
+
+  // tail: thick at the base, thin at the tip, darker tip (rings for tabbies)
+  const sway = Math.sin(performance.now() / 380) * (cat.leap ? .2 : 1);
+  const tx = [-15, -26, -30, -36], ty = [w, 4 + sway * 8, -10 + sway * 10, -6 + sway * 12];
+  for (let i = 0; i <= 22; i++) {
+    const t = i / 22;
+    ctx.fillStyle = t > .78 ? SKIN.tailTip : SKIN.pattern === "tabby" && t > .2 && Math.floor(t * 9) % 2 ? SKIN.marks : SKIN.fur;
+    ctx.beginPath(); ctx.arc(bez(...tx, t), bez(...ty, t), 3.4 - t * 1.8, 0, 7); ctx.fill();
+  }
+  // paws (only the toes peek out from under the body)
+  const step = cat.leap ? 6 : 0;
+  ctx.fillStyle = SKIN.paws;
+  ctx.beginPath();
+  ctx.ellipse(10 + step, -9.2, 3.6, 2.9, 0, 0, 7); ctx.ellipse(10 + step, 9.2, 3.6, 2.9, 0, 0, 7);
+  ctx.ellipse(-12 - step, -11 + w * 2, 3.6, 2.9, 0, 0, 7); ctx.ellipse(-12 - step, 11 + w * 2, 3.6, 2.9, 0, 0, 7);
+  ctx.fill();
+
+  // body, then its pattern and shading, all kept inside the body outline
+  catBodyPath(w); ctx.fillStyle = SKIN.fur; ctx.fill();
+  ctx.save(); catBodyPath(w); ctx.clip();
+  if (SKIN.pattern === "tabby") {
+    ctx.strokeStyle = SKIN.marks; ctx.lineCap = "round";
+    ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-18, w); ctx.lineTo(11, 0); ctx.stroke();   // stripe down the spine
+    ctx.lineWidth = 2.3;
+    for (const x of [-14, -9, -4, 1, 6]) {   // stripes that wrap around the sides
+      const o = x < 0 ? w : 0;
+      ctx.beginPath(); ctx.moveTo(x - 1.5, -13 + o); ctx.quadraticCurveTo(x + 3.5, o, x - 1.5, 13 + o); ctx.stroke();
+    }
+  } else if (SKIN.pattern === "tuxedo") {
+    ctx.fillStyle = SKIN.paws; ctx.beginPath(); ctx.ellipse(8, 0, 5, 7, 0, 0, 7); ctx.fill();   // white chest, just behind the head
+  } else if (SKIN.pattern === "calico") {
+    const [a, b] = SKIN.patches;
+    ctx.fillStyle = a; ctx.beginPath(); ctx.ellipse(-10, -5 + w, 6.5, 5, .4, 0, 7); ctx.ellipse(-3, 8 + w, 4, 3, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = b; ctx.beginPath(); ctx.ellipse(3, 5, 5, 4, -.3, 0, 7); ctx.ellipse(-15, 4 + w, 3.5, 3, 0, 0, 7); ctx.fill();
+  }
+  // roundness: light along the spine, darker down the sides
+  const sh = ctx.createLinearGradient(0, -13, 0, 13);
+  sh.addColorStop(0, "rgba(0,0,0,.32)"); sh.addColorStop(.32, "rgba(0,0,0,0)"); sh.addColorStop(.5, "rgba(255,240,220,.17)");
+  sh.addColorStop(.68, "rgba(0,0,0,0)"); sh.addColorStop(1, "rgba(0,0,0,.32)");
+  ctx.fillStyle = sh; ctx.fillRect(-20, -14, 36, 28);
+  // shoulder blades pop up while crouching
+  if (crouch > .05) {
+    ctx.fillStyle = `rgba(255,240,220,${crouch * .16})`;
+    ctx.beginPath(); ctx.ellipse(7, -4.5, 3.5, 2.4, 0, 0, 7); ctx.ellipse(7, 4.5, 3.5, 2.4, 0, 0, 7); ctx.fill();
+  }
+  rimLight(la, -2, 0, 14);
+  ctx.restore();
+  drawAccessory("back");
+
+  // head, its markings and shading
+  catHeadPath(); ctx.fillStyle = SKIN.fur; ctx.fill();
+  ctx.save(); catHeadPath(); ctx.clip();
+  if (SKIN.pattern === "tabby") {
+    ctx.strokeStyle = SKIN.marks; ctx.lineWidth = 1.5; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(9.5, 0); ctx.lineTo(15, 0);                                       // the forehead "M"
+    ctx.moveTo(10, -3); ctx.lineTo(15.5, -2); ctx.moveTo(10, 3); ctx.lineTo(15.5, 2);
+    ctx.moveTo(12, -8.5); ctx.lineTo(15.5, -6.5); ctx.moveTo(12, 8.5); ctx.lineTo(15.5, 6.5);   // cheek stripes
+    ctx.stroke();
+  } else if (SKIN.pattern === "tuxedo") {
+    ctx.fillStyle = SKIN.muzzle; ctx.beginPath(); ctx.ellipse(23, 0, 5, 3.2, 0, 0, 7); ctx.fill();   // white blaze
+  } else if (SKIN.pattern === "calico") {
+    ctx.fillStyle = SKIN.patches[1]; ctx.beginPath(); ctx.ellipse(16, -5, 5, 4, 0, 0, 7); ctx.fill();
+  }
+  const hs = ctx.createRadialGradient(16, 0, 2, 16, 0, 12);
+  hs.addColorStop(0, "rgba(255,240,220,.16)"); hs.addColorStop(.6, "rgba(0,0,0,0)"); hs.addColorStop(1, "rgba(0,0,0,.3)");
+  ctx.fillStyle = hs; ctx.fillRect(4, -12, 26, 24);
+  rimLight(la, 17, 0, 9);
+  ctx.restore();
+  drawAccessory("collar");
+
+  // ears on top of the head; they fold back a little while crouching
+  const ex = 14.5 - crouch * 3, ey = 11.8 + crouch * .8;
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = SKIN.fur; ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineWidth = .7; ctx.lineJoin = "round";
+    ctx.beginPath(); ctx.moveTo(10.5, 3.5 * side); ctx.lineTo(ex, ey * side); ctx.lineTo(16.5, 6.2 * side); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "rgba(0,0,0,.2)";   // the back of the ear is in shadow
+    ctx.beginPath(); ctx.moveTo(10.5, 3.5 * side); ctx.lineTo(ex, ey * side); ctx.lineTo(12, 5.4 * side); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = SKIN.earInner;
+    ctx.beginPath(); ctx.moveTo(12.6, 5.3 * side); ctx.lineTo(ex + .3, (ey - 2.2) * side); ctx.lineTo(15.6, 6.3 * side); ctx.closePath(); ctx.fill();
+  }
+
+  // muzzle, nose and whiskers
+  ctx.fillStyle = SKIN.muzzle;
+  ctx.beginPath(); ctx.ellipse(23.4, -1.7, 2.6, 2.2, 0, 0, 7); ctx.ellipse(23.4, 1.7, 2.6, 2.2, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = SKIN.nose;
+  ctx.beginPath(); ctx.moveTo(26.4, 0); ctx.lineTo(24.6, -1.5); ctx.lineTo(24.6, 1.5); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "rgba(255,250,235,.55)"; ctx.lineWidth = .45;
+  ctx.beginPath();
+  ctx.moveTo(24, -2.5); ctx.lineTo(29, -6.5); ctx.moveTo(24.5, -2); ctx.lineTo(30, -3.5);
+  ctx.moveTo(24, 2.5); ctx.lineTo(29, 6.5); ctx.moveTo(24.5, 2); ctx.lineTo(30, 3.5);
+  ctx.stroke();
+  // eyes (wide when aiming), with a little shine
+  const eye = 2 + crouch * .9;
+  ctx.fillStyle = SKIN.eyes;
+  ctx.beginPath(); ctx.ellipse(20, -3.6, 1.6, eye, 0, 0, 7); ctx.ellipse(20, 3.6, 1.6, eye, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "#121212";
+  ctx.beginPath(); ctx.ellipse(20.4, -3.6, .6, eye * .8, 0, 0, 7); ctx.ellipse(20.4, 3.6, .6, eye * .8, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.85)";
+  ctx.beginPath(); ctx.arc(19.6, -4.4, .45, 0, 7); ctx.arc(19.6, 2.8, .45, 0, 7); ctx.fill();
+  drawAccessory("hat");
+  ctx.restore();
+}
+function drawAim() {
+  if (!aim || cat.leap) return;
+  const power = wigglePower(aim.hold);
+  const to = leapTarget(aim, power);
+  const r = catchRadius(power) + (power >= 1 ? Math.sin(performance.now() / 70) * 1.5 : 0);   // throbs when fully wound up
+  const ok = cat.rest <= 0;
+  ctx.save();
+  ctx.strokeStyle = ok ? "rgba(242,180,80,.9)" : "rgba(200,200,200,.4)";
+  ctx.lineWidth = 2.5; ctx.setLineDash([2, 8]); ctx.lineCap = "round";
+  const mx = (cat.x + to.x) / 2, my = (cat.y + to.y) / 2 - Math.hypot(to.x - cat.x, to.y - cat.y) * .25;
+  ctx.beginPath(); ctx.moveTo(cat.x, cat.y); ctx.quadraticCurveTo(mx, my, to.x, to.y); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = `rgba(242,180,80,${.12 + power * .1})`;
+  ctx.beginPath(); ctx.arc(to.x, to.y, r, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+function drawEffects(layer = "main") {   // "paws" (under everything), "main", or "top" (above the lighting)
+  for (const f of effects) {
+    if ((f.kind === "paws" ? "paws" : f.top ? "top" : "main") !== layer) continue;
+    const k = f.life / f.max;
+    if (f.kind === "paws") {
+      ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.a); ctx.globalAlpha = k * .35; ctx.fillStyle = "#1a100b";
+      for (const [px, py] of [[8, -6], [8, 6], [-8, -6], [-8, 6]]) { ctx.beginPath(); ctx.arc(px, py, 2.6, 0, 7); ctx.fill(); }
+      ctx.restore();
+    } else if (f.kind === "ring") {
+      ctx.strokeStyle = `rgba(242,180,80,${k * .8})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r + (1 - k) * 18, 0, 7); ctx.stroke();
+    } else if (f.kind === "spark") {
+      ctx.fillStyle = `rgba(255,220,140,${k})`; ctx.beginPath(); ctx.arc(f.x, f.y, 1.8, 0, 7); ctx.fill();
+    } else if (f.kind === "text") {
+      ctx.globalAlpha = Math.min(1, k * 2);
+      ctx.font = `${f.big ? 22 : 17}px "Lilita One", "Trebuchet MS", sans-serif`;
+      ctx.textAlign = "center";
+      ctx.lineWidth = 4; ctx.strokeStyle = "rgba(20,10,5,.8)"; ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillStyle = f.dim ? "#b7a891" : f.big ? "#ffd27a" : "#fff3dc"; ctx.fillText(f.text, f.x, f.y);
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+function drawEyeGlints(d) {
+  ctx.fillStyle = `rgba(255,236,170,${.95 * d})`;
+  ctx.beginPath();
+  for (const c of critters) {
+    if (c.state === "hide") continue;
+    if (c.type === "bat") {   // bat eyes face the camera
+      ctx.moveTo(c.x - .6, c.y - 2); ctx.arc(c.x - 1.8, c.y - 2, 1.2, 0, 7);
+      ctx.moveTo(c.x + 3, c.y - 2); ctx.arc(c.x + 1.8, c.y - 2, 1.2, 0, 7);
+      continue;
+    }
+    const k = c.r / 7, ca = Math.cos(c.a), sa = Math.sin(c.a);
+    for (const side of [-1, 1]) {   // the same spot as the eyes in drawRodent, turned with the critter
+      const ex = c.x + (8.5 * ca - side * 1.6 * sa) * k, ey = c.y + (8.5 * sa + side * 1.6 * ca) * k;
+      ctx.moveTo(ex + 1.4, ey); ctx.arc(ex, ey, 1.4, 0, 7);
+    }
+  }
+  ctx.fill();
+}
+function draw() {
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+  ctx.drawImage(floor, 0, 0, W, H);
+  holes.forEach(drawHole);
+  drawEffects("paws");   // paw prints sit under everything
+  sacks.forEach(drawSack);
+  critters.filter((c) => c.type !== "bat").forEach(drawRodent);
+  critters.filter((c) => c.type === "bat" && c.state === "perch").forEach(drawBat);   // landed bats sit on the floor
+  drawAim();
+  drawCat();
+  // a "!" over the cat just before it loses patience and pounces by itself
+  if (aim && !cat.leap && aim.hold > WIGGLE_MAX - .6) drawBubble(cat.x, cat.y - 30, "!", true);
+  critters.filter((c) => c.type === "bat" && c.state !== "perch").forEach(drawBat);
+  drawEffects();
+  // lantern light: warm in the middle, dark at the edges, getting lighter toward dawn
+  const dawn = Math.min(1, t / N.seconds);
+  const g = ctx.createRadialGradient(LANTERN.x, LANTERN.y, 40, LANTERN.x, LANTERN.y, 360);
+  g.addColorStop(0, "rgba(255,190,90,.10)");
+  g.addColorStop(.45, `rgba(14,9,22,${.25 - dawn * .12})`);
+  g.addColorStop(1, `rgba(8,5,16,${.72 - dawn * .35})`);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // Lantern Flicker: when the lantern dims, only a small circle in the middle stays lit,
+  // and the critters' eyes glint in the dark so you can still hunt them
+  if (lamp && lamp.d > .01) {
+    const dim = ctx.createRadialGradient(LANTERN.x, LANTERN.y, 30, LANTERN.x, LANTERN.y, 160);
+    dim.addColorStop(0, "rgba(3,2,8,0)");
+    dim.addColorStop(1, `rgba(3,2,8,${.97 * lamp.d})`);
+    ctx.fillStyle = dim; ctx.fillRect(0, 0, W, H);
+    drawEyeGlints(lamp.d);
+  }
+  drawEffects("top");   // the night's title stays readable even in the dark
+  if (dawn > .8) { ctx.fillStyle = `rgba(255,170,110,${(dawn - .8) * .4})`; ctx.fillRect(0, 0, W, H); }
+}
+
+// ---------- HUD ----------
+const $ = (id) => document.getElementById(id);
+function updateHud() {
+  const grain = sacks ? sacks.reduce((n, s) => n + s.hp, 0) / (sacks.length * 100) : 1;
+  $("grainFill").style.width = grain * 100 + "%";
+  $("grainFill").classList.toggle("low", grain < .3);
+  $("dawnFill").style.width = Math.min(100, (t || 0) / N.seconds * 100) + "%";
+  $("score").textContent = score || 0;
+  $("combo").textContent = streak >= 2 ? `x${Math.min(5, streak)} streak` : "score";
+}
+
+// ---------- Start / end ----------
+// Saved on the device: the best score overall, and each night's best stars and score.
+function loadBest() { try { return Number(localStorage.getItem("barncat-best")) || 0; } catch (e) { return 0; } }
+function saveBest(n) { try { localStorage.setItem("barncat-best", String(n)); } catch (e) { /* fine */ } }
+function loadProgress() {
+  try { const p = JSON.parse(localStorage.getItem("barncat-nights")); return Array.isArray(p) ? p : []; } catch (e) { return []; }
+}
+function saveProgress(p) { try { localStorage.setItem("barncat-nights", JSON.stringify(p)); } catch (e) { /* fine */ } }
+(function upgradeOldSave() {
+  // Night 6 "Four Sacks" was removed (October 2026). Saves are stored in night order,
+  // so drop its spot once; otherwise its stars would show up on Harvest Moon.
+  try {
+    if (localStorage.getItem("barncat-save-version") === "2") return;
+    const p = loadProgress();
+    if (p.length > 5) { p.splice(5, 1); saveProgress(p); }
+    localStorage.setItem("barncat-save-version", "2");
+  } catch (e) { /* fine */ }
+})();
+const isUnlocked = (i, p) => i === 0 || ((p[i - 1] && p[i - 1].stars) || 0) >= 1;
+const starsHtml = (n) => [0, 1, 2].map((i) => `<span class="${i < n ? "" : "off"}">★</span>`).join("");
+const totalStars = (p) => p.reduce((n, r) => n + ((r && r.stars) || 0), 0);
+
+// ---------- Points, upgrades and looks (saved on the device) ----------
+const loadNum = (key) => { try { return Number(localStorage.getItem(key)) || 0; } catch (e) { return 0; } };
+const saveText = (key, v) => { try { localStorage.setItem(key, String(v)); } catch (e) { /* fine */ } };
+let points = loadNum("barncat-points");
+let levels = (() => {
+  try { const l = JSON.parse(localStorage.getItem("barncat-upgrades")); return l && typeof l === "object" ? l : {}; } catch (e) { return {}; }
+})();
+const levelOf = (id) => Math.max(0, Math.min(UPGRADE_COSTS.length, levels[id] | 0));
+function buildCat() {   // base numbers plus every upgrade level bought
+  const c = { ...BASE_CAT };
+  for (const u of UPGRADES) for (const k in u.per) c[k] += u.per[k] * levelOf(u.id);
+  CAT = c;
+}
+function buyUpgrade(id) {
+  const lv = levelOf(id);
+  if (lv >= UPGRADE_COSTS.length || points < UPGRADE_COSTS[lv]) return;
+  points -= UPGRADE_COSTS[lv];
+  levels[id] = lv + 1;
+  saveText("barncat-points", points);
+  saveText("barncat-upgrades", JSON.stringify(levels));
+  buildCat();
+}
+function refundUpgrade(id) {   // take back one rank and get its full cost back, so points can be moved around
+  const lv = levelOf(id);
+  if (lv <= 0) return;
+  points += UPGRADE_COSTS[lv - 1];
+  levels[id] = lv - 1;
+  saveText("barncat-points", points);
+  saveText("barncat-upgrades", JSON.stringify(levels));
+  buildCat();
+}
+buildCat();
+function showUpgrades(focusId) {   // the three upgrade rows at the top of "Pick a night"
+  $("pointsNow").textContent = points.toLocaleString();
+  const ups = $("upgradeList"), ranks = UPGRADE_COSTS.length;
+  ups.innerHTML = "";
+  for (const u of UPGRADES) {
+    const lv = levelOf(u.id), max = lv >= ranks, cost = UPGRADE_COSTS[lv];
+    const row = document.createElement("div"); row.className = "upgrade";
+    row.innerHTML = `<div class="up-info"><b>${u.name}</b>`
+      + `<span class="pips" aria-hidden="true">${UPGRADE_COSTS.map((_, i) => `<i class="${i < lv ? "on" : ""}"></i>`).join("")}</span>`
+      + `<small class="up-num">Rank ${lv} / ${ranks}</small></div>`;
+    // "−" takes back one rank for a full refund
+    const back = document.createElement("button"); back.type = "button"; back.className = "up-undo"; back.dataset.focus = u.id + "-undo";
+    back.disabled = lv === 0;
+    back.textContent = "−";
+    back.setAttribute("aria-label", lv === 0 ? `${u.name} has no ranks to take back` : `Take back one ${u.name} rank, get ${UPGRADE_COSTS[lv - 1]} points back`);
+    back.onclick = () => { refundUpgrade(u.id); sfx.miss(); showUpgrades(u.id + "-undo"); };
+    const b = document.createElement("button"); b.type = "button"; b.className = "up-btn"; b.dataset.focus = u.id;
+    b.disabled = max || points < cost;
+    b.innerHTML = max ? "Max" : `Upgrade<b>${cost.toLocaleString()}</b>`;
+    b.setAttribute("aria-label", max ? `${u.name} is at max rank` : `${u.name} is rank ${lv} of ${ranks}. Upgrade for ${cost} points`);
+    b.onclick = () => { buyUpgrade(u.id); sfx.squeak(); showUpgrades(u.id); };
+    row.append(back, b); ups.append(row);
+  }
+  if (focusId) {   // keep keyboard focus where it was after buying or taking back
+    const b = ups.querySelector(`[data-focus="${focusId}"]`);
+    (b && !b.disabled ? b : $("nightList").querySelector(".night:not(:disabled)")).focus();
+  }
+}
+
+// ---------- Night picker ----------
+const LOCK_SVG = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M6 8V6a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h1zm2 0h4V6a2 2 0 1 0-4 0v2z"/></svg>';
+function showNights() {
+  const p = loadProgress();
+  const list = $("nightList");
+  list.innerHTML = "";
+  let newShown = false;
+  NIGHTS.forEach((night, i) => {
+    const open = isUnlocked(i, p), rec = p[i] || {};
+    const isNew = open && !rec.stars && !newShown;
+    if (isNew) newShown = true;
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "night"; b.disabled = !open;
+    b.innerHTML = `<span class="num">${i + 1}</span>`
+      + `<span class="info"><b>${night.name}</b><small>${open ? night.blurb : "Finish night " + i + " to unlock."}</small></span>`
+      + `<span class="right">${!open ? LOCK_SVG : isNew ? '<span class="tag">New!</span>'
+        : `<span class="mini-stars">${starsHtml(rec.stars || 0)}</span><span class="best">Best ${rec.best || 0}</span>`}</span>`;
+    b.setAttribute("aria-label", `Night ${i + 1}, ${night.name}. ` + (open ? `${rec.stars || 0} of 3 stars.` : "Locked."));
+    if (open) b.onclick = () => start(i);
+    list.append(b);
+  });
+  showUpgrades();
+  $("startScreen").hidden = true; $("endScreen").hidden = true; $("pauseScreen").hidden = true;
+  $("nightsScreen").hidden = false;
+  state = "menu"; $("pauseBtn").disabled = true;
+  const tag = list.querySelector(".tag");   // jump to the newest night
+  (tag ? tag.closest(".night") : list.querySelector(".night:not(:disabled)")).focus();
+}
+
+function start(i = nightIndex) {
+  if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
+  if (audio && audio.state === "suspended") audio.resume();
+  nightIndex = i;
+  reset();
+  effects.push({ kind: "text", x: W / 2, y: 150, text: `Night ${i + 1}: ${N.name}`, life: 2.4, max: 2.4, big: true, top: true });
+  $("startScreen").hidden = true; $("endScreen").hidden = true; $("nightsScreen").hidden = true;
+  state = "play"; lastFrame = performance.now();
+  $("pauseBtn").disabled = false;
+}
+function finish(won) {
+  state = "over";
+  $("pauseBtn").disabled = true;
+  updateHud();
+  const grain = Math.round(sacks.reduce((n, s) => n + s.hp, 0) / sacks.length);
+  const reachedDawn = won;
+  won = won && grain >= STAR_GRAIN[0];   // making it to dawn with too little grain still loses the night
+  const stars = !won ? 0 : grain >= STAR_GRAIN[2] ? 3 : grain >= STAR_GRAIN[1] ? 2 : 1;
+  // remember this night's best stars and score (and the best score overall)
+  const p = loadProgress(), rec = p[nightIndex] || { stars: 0, best: 0 };
+  const newBest = score > rec.best && score > 0;
+  p[nightIndex] = { stars: Math.max(rec.stars, stars), best: Math.max(rec.best, score) };
+  saveProgress(p);
+  // the night's score becomes points only if it earned at least 1 star
+  if (won) { points += score; saveText("barncat-points", points); }
+  saveBest(Math.max(loadBest(), score));
+  const last = nightIndex === NIGHTS.length - 1;
+  $("endEyebrow").textContent = !won ? `Night ${nightIndex + 1} lost` : last ? "Week One complete!" : `Night ${nightIndex + 1} · Sunrise`;
+  $("endTitle").textContent = won ? (stars === 3 ? "Purr-fect night!" : "The barn made it!") : reachedDawn ? "Not enough grain left" : "The mice got it all";
+  $("endStars").innerHTML = starsHtml(stars);
+  $("endStars").setAttribute("aria-label", `${stars} of 3 stars`);
+  $("endText").textContent = won
+    ? `${grain}% of the grain saved. Score ${score}.${newBest ? " Your best on this night!" : ` Best: ${p[nightIndex].best}.`}`
+    : reachedDawn
+      ? `Only ${grain}% of the grain made it to dawn. You need ${STAR_GRAIN[0]}% to win. Score ${score}.`
+      : `You lasted ${Math.floor(t)} seconds. Score ${score}. Best: ${p[nightIndex].best}.`;
+  if (won && score > 0) $("endText").textContent += ` +${score.toLocaleString()} points to spend on upgrades.`;
+  else if (score > 0) $("endText").textContent += " No points this time: you need at least 1 star to keep them.";
+  $("tMice").textContent = caught.mouse; $("tRats").textContent = caught.rat; $("tBats").textContent = caught.bat;
+  // buttons: "Next night" after a win (if there is one), otherwise "Try again" is the main button
+  const hasNext = won && !last;
+  $("nextBtn").hidden = !hasNext;
+  $("againBtn").classList.toggle("alt", hasNext);
+  setTimeout(() => { $("endScreen").hidden = false; (hasNext ? $("nextBtn") : $("againBtn")).focus(); }, 600);
+}
+$("startBtn").onclick = showNights;
+$("againBtn").onclick = () => start(nightIndex);
+$("nextBtn").onclick = () => start(nightIndex + 1);
+$("toNightsBtn").onclick = showNights;
+$("pauseNightsBtn").onclick = showNights;
+$("nightsBackBtn").onclick = () => { $("nightsScreen").hidden = true; $("startScreen").hidden = false; $("startBtn").focus(); };
+function pause() {
+  if (state !== "play") return;
+  state = "paused"; aim = null; queued = null;
+  $("pauseScreen").hidden = false;
+  $("resumeBtn").focus();
+}
+function resume() {
+  if (state !== "paused") return;
+  $("pauseScreen").hidden = true;
+  state = "play"; lastFrame = performance.now();
+}
+$("pauseBtn").onclick = () => (state === "paused" ? resume() : pause());
+$("resumeBtn").onclick = resume;
+$("restartBtn").onclick = () => { $("pauseScreen").hidden = true; start(); };
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" || e.key === "p" || e.key === "P") state === "paused" ? resume() : pause();
+});
+document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); });
+
+// ---------- Main loop ----------
+function frame(now) {
+  const dt = Math.min(.05, (now - (lastFrame || now)) / 1000);
+  lastFrame = now;
+  if (state === "play") update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+reset();
+// a few mice already sniffing around behind the start screen
+for (let i = 0; i < 3; i++) spawnCritter();
+requestAnimationFrame(frame);
+})();

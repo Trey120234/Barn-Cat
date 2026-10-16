@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Barn Cat Night Shift</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div class="hud">
+    <div class="meters">
+      <div class="meter-row"><span>Grain</span><div class="bar"><i id="grainFill"></i></div></div>
+      <div class="meter-row"><span>Dawn</span><div class="bar"><i id="dawnFill"></i></div></div>
+    </div>
+    <div class="score"><b id="score">0</b><small id="combo">score</small></div>
+    <button class="icon-btn" id="pauseBtn" type="button" aria-label="Pause" disabled>
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="currentColor"><rect x="4" y="3" width="4" height="14" rx="1.2"/><rect x="12" y="3" width="4" height="14" rx="1.2"/></svg>
+    </button>
+    <button class="icon-btn" id="muteBtn" type="button" aria-label="Sound off">🔈</button>
+  </div>
+
+  <div id="stage">
+    <canvas id="game" aria-label="Barn floor. Tap where the cat should pounce."></canvas>
+
+    <div class="overlay" id="startScreen">
+      <div class="card">
+        <span class="eyebrow">Week One · 6 nights</span>
+        <h1>Barn Cat<br>Night Shift</h1>
+        <p>Mice want the grain. You're the barn cat. Keep them off it until the sun comes up.</p>
+        <div class="how">
+          <div><b>Pounce</b><span>Tap for a quick hop. Hold to wiggle: the pounce grows bigger, but mice nearby may spot you and bolt. Slide to aim, let go to leap.</span></div>
+          <div><b>Combos</b><span>Catch several in one leap, or keep landing catches in a row.</span></div>
+          <div><b>Watch for</b><span>Rats eat faster. Bats swoop by for big points.</span></div>
+        </div>
+        <button class="big" id="startBtn" type="button">Choose a night</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="nightsScreen" hidden>
+      <div class="card nights-card">
+        <span class="eyebrow">Week One</span>
+        <h2>Pick a night</h2>
+        <div class="section-label up-head"><span>Upgrades</span><span><b id="pointsNow">0</b> points</span></div>
+        <div class="upgrades" id="upgradeList"></div>
+        <div class="section-label">Nights</div>
+        <div class="nights" id="nightList"></div>
+        <button class="big alt" id="nightsBackBtn" type="button">Back</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="endScreen" hidden>
+      <div class="card">
+        <span class="eyebrow" id="endEyebrow">Sunrise</span>
+        <h2 id="endTitle">The barn made it!</h2>
+        <div class="stars" id="endStars"></div>
+        <p id="endText"></p>
+        <div class="tally">
+          <div><b id="tMice">0</b><span>Mice</span></div>
+          <div><b id="tRats">0</b><span>Rats</span></div>
+          <div><b id="tBats">0</b><span>Bats</span></div>
+        </div>
+        <button class="big" id="nextBtn" type="button" hidden>Next night</button>
+        <button class="big" id="againBtn" type="button">Try again</button>
+        <button class="big alt" id="toNightsBtn" type="button">All nights</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="pauseScreen" hidden>
+      <div class="card">
+        <span class="eyebrow">The mice are waiting</span>
+        <h2>Paused</h2>
+        <button class="big" id="resumeBtn" type="button">Keep going</button>
+        <button class="big alt" id="restartBtn" type="button">Start the night over</button>
+        <button class="big alt" id="pauseNightsBtn" type="button">All nights</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
