@@ -52,6 +52,9 @@ jobs:
         run: |
           npm ci
           npm run copy-web
+          # tell the app which build it is, and switch on "Update available" (GitHub test app only;
+          # a Google Play build must use "selfUpdate": false and drop the install permission)
+          echo '{ "build": ${{ github.run_number }}, "selfUpdate": true }' > www/app-build.json
           npx cap sync android
 
       - name: Build and sign the app

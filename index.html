@@ -106,6 +106,19 @@
       </div>
     </div>
 
+    <!-- "Update available": only in the Android test app from GitHub (see install.js) -->
+    <div class="overlay" id="updateScreen" hidden>
+      <div class="card">
+        <span class="eyebrow">New version</span>
+        <h2>Update available</h2>
+        <p id="updateText"></p>
+        <div class="bar update-bar" id="updateBar" hidden><i id="updateFill"></i></div>
+        <p class="update-status" id="updateStatus" role="status"></p>
+        <button class="big" id="updateBtn" type="button">Update</button>
+        <button class="big alt" id="updateLaterBtn" type="button">Not now</button>
+      </div>
+    </div>
+
     <div class="overlay" id="nightsScreen" hidden>
       <div class="card nights-card">
         <span class="eyebrow">Week One</span>
